@@ -78,7 +78,7 @@ export async function handler(req, res) {
       const card = (await featureRequest('/api/cards', 'GET')).find(item => item.id === id);
       if (!card) return json(res, { error: 'Card not found.' }, 404);
       if (card.bank.toLowerCase() !== 'hdfc') throw new Error('Automatic email statement import currently supports HDFC cards only.');
-      const input = await body(req), statement = await findHdfcCardStatement(card.lastFour);
+      const input = await body(req), statement = await findHdfcCardStatement(card.lastFour, card.variant);
       const candidates = [hdfcStatementPassword(card.cardholderName, card.lastFour)];
       if (input.dobDayMonth) candidates.push(hdfcStatementPassword(card.cardholderName, card.lastFour, input.dobDayMonth));
       let result, passwordError;

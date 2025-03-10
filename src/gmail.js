@@ -75,24 +75,37 @@ export function hdfcStatementPassword(cardholderName, lastFour, dobDayMonth = ''
   if (dobDayMonth && !/^(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])$/.test(dobDayMonth)) throw new Error('Enter date of birth as DDMM.');
   return `${name.slice(0, 4)}${dobDayMonth || lastFour}`;
 }
-export async function findHdfcCardStatement(lastFour) {
+export async function findHdfcCardStatement(lastFour, variant) {
   if (!/^\d{4}$/.test(lastFour || '')) throw new Error('Enter the card\'s last four digits.');
-  const query = `from:${HDFC_STATEMENT_SENDER} has:attachment filename:pdf ${lastFour} newer_than:2y`;
-  const page = await gmail('messages?' + new URLSearchParams({ q: query, maxResults: '25' }));
-  for (const { id } of page.messages || []) {
-    const message = await gmail(`messages/${id}?format=full`);
-    if (senderAddress(header(message.payload, 'from')) !== HDFC_STATEMENT_SENDER) continue;
-    const pdfs = parts(message.payload).filter(part => part.filename && /\.pdf$/i.test(part.filename) && (part.body?.attachmentId || part.body?.data));
-    const searchable = [header(message.payload, 'subject'), messageText(message.payload), ...pdfs.map(part => part.filename)].join(' ');
-    if (!new RegExp(`(?:^|\\D)${lastFour}(?:\\D|$)`).test(searchable)) continue;
-    const part = pdfs[0];
-    if (!part) continue;
-    const attachment = part.body.data ? part.body : await gmail(`messages/${id}/attachments/${encodeURIComponent(part.body.attachmentId)}`);
-    if (!attachment.data) continue;
-    const data = Buffer.from(attachment.data, 'base64url');
-    return { name: part.filename.replace(/^.*[\\/]/, ''), data: data.toString('base64'), messageId: id };
+  const safeVariant = String(variant || '').trim().replace(/["\\]/g, ' ');
+  if (!safeVariant) throw new Error('Enter the card variant shown in the statement subject.');
+  const base = `from:${HDFC_STATEMENT_SENDER} has:attachment filename:pdf newer_than:2y`;
+  const queries = [`${base} ${lastFour}`, `${base} subject:"${safeVariant} Credit Card Statement"`,
+    `${base} subject:"${safeVariant}" subject:"Credit Card Statement"`, `${base} subject:"Credit Card Statement"`];
+  const normalizedVariant = safeVariant.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), seen = new Set();
+  for (const query of queries) {
+    const page = await gmail('messages?' + new URLSearchParams({ q: query, maxResults: '25' }));
+    for (const { id } of page.messages || []) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const message = await gmail(`messages/${id}?format=full`);
+      if (senderAddress(header(message.payload, 'from')) !== HDFC_STATEMENT_SENDER) continue;
+      const pdfs = parts(message.payload).filter(part => part.filename && /\.pdf$/i.test(part.filename) && (part.body?.attachmentId || part.body?.data));
+      const subject = header(message.payload, 'subject');
+      const searchable = [subject, messageText(message.payload), ...pdfs.map(part => part.filename)].join(' ');
+      const normalizedSubject = subject.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const digitsMatch = new RegExp(`(?:^|\\D)${lastFour}(?:\\D|$)`).test(searchable);
+      const subjectMatch = normalizedSubject.includes(normalizedVariant) && normalizedSubject.includes('card statement');
+      if (!digitsMatch && !subjectMatch) continue;
+      const part = pdfs[0];
+      if (!part) continue;
+      const attachment = part.body.data ? part.body : await gmail(`messages/${id}/attachments/${encodeURIComponent(part.body.attachmentId)}`);
+      if (!attachment.data) continue;
+      const data = Buffer.from(attachment.data, 'base64url');
+      return { name: part.filename.replace(/^.*[\\/]/, ''), data: data.toString('base64'), messageId: id };
+    }
   }
-  throw new Error(`No HDFC card-statement PDF matching card ending ${lastFour} was found in the last two years.`);
+  throw new Error(`No HDFC statement PDF matching ${safeVariant} or card ending ${lastFour} was found in the last two years.`);
 }
 export async function sync() {
   const startedAt = Date.now();
