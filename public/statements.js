@@ -70,6 +70,13 @@ export function setupStatements(api, reload, categories) {
   async function discard() {
     if (upload) { const token = upload.token; upload = undefined; await api('/api/statements/discard', 'POST', { token }).catch(() => {}); }
   }
+  function showMapping(result, details) {
+    upload = result; bank = details.bank; account = details.account;
+    $('#statement-filename').textContent = `${details.name} · ${bank}${account ? ` · ending ${account}` : ''}`;
+    $('#statement-sheet').replaceChildren(...upload.sheets.map((sheet, index) => new Option(`${sheet.name} (${sheet.rowCount} rows)`, index)));
+    $('#statement-date-order').value = 'DMY'; $('#statement-amount-mode').value = 'explicit';
+    setupSheet(); step(2); if (!dialog.open) dialog.showModal();
+  }
   open.onclick = () => {
     $('#statement-upload-form').reset(); $('#statement-progress').textContent = ''; rows = []; step(1); dialog.showModal();
   };
@@ -100,10 +107,7 @@ export function setupStatements(api, reload, categories) {
         }
       }
       $('#statement-password').value = ''; $('#statement-file').value = '';
-      $('#statement-filename').textContent = `${file.name} · ${bank}${account ? ` · ending ${account}` : ''}`;
-      $('#statement-sheet').replaceChildren(...upload.sheets.map((sheet, index) => new Option(`${sheet.name} (${sheet.rowCount} rows)`, index)));
-      $('#statement-date-order').value = 'DMY'; $('#statement-amount-mode').value = 'explicit';
-      setupSheet(); step(2);
+      showMapping(upload, { name: file.name, bank, account });
     } catch (error) { $('#statement-error').textContent = error.message; }
     finally { pending(false); }
   };
@@ -191,4 +195,5 @@ export function setupStatements(api, reload, categories) {
     } catch (error) { $('#statement-error').textContent = error.message; }
     finally { pending(false); }
   };
+  return { openImported(result) { rows = []; showMapping(result, result); } };
 }

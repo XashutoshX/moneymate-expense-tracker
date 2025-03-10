@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { db, get, set, saveTokens, readTokens, userId, enterUser, findOrCreateUser, createSession, sessionUser, deleteSession, isPostgres, all, one, run, ready } from './store.js';
-import { configured, redirectUri, exchange, gmail, sync } from './gmail.js';
+import { configured, redirectUri, exchange, gmail, sync, findHdfcCardStatement, hdfcStatementPassword } from './gmail.js';
 import { categoryIcons } from './categories.js';
 import { deleteTransaction, featureRequest, listTransactions } from './features.js';
 import { addManualTransaction } from './manual.js';
@@ -72,7 +72,30 @@ export async function handler(req, res) {
     if (url.pathname === '/api/statements/preview' && req.method === 'POST') return json(res, await previewStatement(await body(req)));
     if (url.pathname === '/api/statements/commit' && req.method === 'POST') return json(res, await commitStatement(await body(req, 5 * 1024 * 1024)));
     if (url.pathname === '/api/statements/discard' && req.method === 'POST') return json(res, discardStatement((await body(req)).token));
-    if (['/api/profile', '/api/people'].includes(url.pathname) || url.pathname.startsWith('/api/splits/')) {
+    if (url.pathname.startsWith('/api/cards/') && url.pathname.endsWith('/statement') && req.method === 'POST') {
+      await requireConnected();
+      const id = decodeURIComponent(url.pathname.slice('/api/cards/'.length, -'/statement'.length));
+      const card = (await featureRequest('/api/cards', 'GET')).find(item => item.id === id);
+      if (!card) return json(res, { error: 'Card not found.' }, 404);
+      if (card.bank.toLowerCase() !== 'hdfc') throw new Error('Automatic email statement import currently supports HDFC cards only.');
+      const input = await body(req), statement = await findHdfcCardStatement(card.lastFour);
+      const candidates = [hdfcStatementPassword(card.cardholderName, card.lastFour)];
+      if (input.dobDayMonth) candidates.push(hdfcStatementPassword(card.cardholderName, card.lastFour, input.dobDayMonth));
+      let result, passwordError;
+      for (const password of candidates) {
+        try { result = await uploadStatement({ ...statement, password }); break; }
+        catch (error) {
+          if (!/password/i.test(error.message)) throw error;
+          passwordError = error;
+        }
+      }
+      if (!result) {
+        if (!input.dobDayMonth) throw new Error('The PDF did not open with the name-and-card password. Enter your birth day and month as DDMM to try HDFC\'s alternate format.');
+        throw passwordError;
+      }
+      return json(res, { ...result, name: statement.name, bank: 'HDFC', account: card.lastFour });
+    }
+    if (['/api/profile', '/api/people', '/api/cards'].includes(url.pathname) || url.pathname.startsWith('/api/splits/') || url.pathname.startsWith('/api/cards/')) {
       const result = await featureRequest(url.pathname, req.method, req.method === 'POST' ? await body(req) : {});
       if (result !== undefined) return json(res, result);
     }

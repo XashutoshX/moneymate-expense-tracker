@@ -33,7 +33,39 @@ export function deleteTransaction(id) {
   } catch (error) { db.exec('ROLLBACK'); throw error; }
   return { ok: true };
 }
+function cardList(value) {
+  try { const cards = JSON.parse(value || '[]'); return Array.isArray(cards) ? cards : []; }
+  catch { return []; }
+}
+async function cardRequest(path, method, input) {
+  const cards = cardList(await get('creditCards'));
+  if (path === '/api/cards' && method === 'GET') return cards;
+  if (path === '/api/cards' && method === 'POST') {
+    const bank = typeof input.bank === 'string' ? input.bank.trim() : '';
+    const variant = typeof input.variant === 'string' ? input.variant.trim() : '';
+    const cardholderName = typeof input.cardholderName === 'string' ? input.cardholderName.trim() : '';
+    const integers = ['creditLimit', 'rewardBalance', 'pointsPerUnit', 'spendUnit', 'pointValue', 'milestoneSpend', 'milestoneValue'];
+    for (const field of integers) input[field] = input[field] === undefined ? 0 : input[field];
+    if (!bank || bank.length > 40 || !variant || variant.length > 80 || !cardholderName || cardholderName.length > 80 ||
+        cardholderName.toUpperCase().replace(/[^A-Z]/g, '').length < 4 || !/^\d{4}$/.test(input.lastFour || '') ||
+        integers.some(field => !Number.isSafeInteger(input[field]) || input[field] < 0)) {
+      throw new Error('Enter a valid card, name on card and last four digits.');
+    }
+    if (cards.some(card => card.bank.toLowerCase() === bank.toLowerCase() && card.lastFour === input.lastFour)) throw new Error('This card is already in your wallet.');
+    const card = { id: randomUUID(), bank, variant, cardholderName, lastFour: input.lastFour, creditLimit: input.creditLimit,
+      rewardBalance: input.rewardBalance, pointsPerUnit: input.pointsPerUnit, spendUnit: input.spendUnit,
+      pointValue: input.pointValue, milestoneSpend: input.milestoneSpend, milestoneValue: input.milestoneValue };
+    await set('creditCards', JSON.stringify([...cards, card]));
+    return card;
+  }
+  if (path.startsWith('/api/cards/') && method === 'DELETE') {
+    const id = decodeURIComponent(path.slice('/api/cards/'.length));
+    await set('creditCards', JSON.stringify(cards.filter(card => card.id !== id)));
+    return { ok: true };
+  }
+}
 export function featureRequest(path, method, input) {
+  if (path === '/api/cards' || path.startsWith('/api/cards/')) return cardRequest(path, method, input);
   if (isPostgres) return featureRequestPostgres(path, method, input);
   if (path === '/api/profile' && method === 'GET') return {
     name: get('profileName') || '', photo: get('profilePhoto') || '', email: get('email') || '' };

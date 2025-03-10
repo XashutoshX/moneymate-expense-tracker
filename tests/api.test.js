@@ -23,3 +23,9 @@ test('origin failures do not retry and repeated expired tokens stop', async () =
   await assert.rejects(expired('/api/test', 'POST'), /Expired/);
   assert.equal(calls, 3);
 });
+test('network and invalid server responses explain what failed', async () => {
+  const offline = createApi(async () => { throw new TypeError('fetch failed'); });
+  await assert.rejects(offline('/api/test'), /Could not reach the MoneyMate server/);
+  const invalid = createApi(async () => ({ status: 504, ok: false, json: async () => { throw new SyntaxError('HTML'); } }));
+  await assert.rejects(invalid('/api/test'), /invalid response/);
+});

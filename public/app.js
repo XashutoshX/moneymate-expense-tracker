@@ -288,11 +288,11 @@ $('#auto-review').onchange = async event => {
 };
 $('#message').textContent = new URLSearchParams(location.search).get('error') || '';
 if (location.search) history.replaceState(null, '', '/');
-const features = setupFeatures(api, load);
-setupStatements(api, async result => {
+const statements = setupStatements(api, async result => {
   selectedHeatmapDate = ''; $('#date-from').value = ''; $('#date-to').value = ''; $('#bank-filter').value = ''; $('#search').value = '';
   $('#ledger-tab').click();
   $('#message').textContent = `Added ${result.imported} statement transactions. ${result.skipped} already imported rows skipped.`;
   await load();
 }, () => categories);
+const features = setupFeatures(api, load, statements);
 load().catch(error => { $('#message').textContent = error.message; });

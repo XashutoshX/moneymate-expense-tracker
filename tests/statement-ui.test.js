@@ -18,7 +18,7 @@ test('import interface reviews edits, excludes duplicates, preserves a failed sa
     return { ok: true };
   };
   try {
-    setupStatements(api, async result => { reloaded = result; }, () => [{ name: 'Uncategorized' }]);
+    const statements = setupStatements(api, async result => { reloaded = result; }, () => [{ name: 'Uncategorized' }]);
     $('#statement-editor').showModal = function () { this.setAttribute('open', ''); };
     $('#statement-editor').close = function () { this.removeAttribute('open'); this.dispatchEvent(new dom.window.Event('close')); };
     $('#upload-statement').click();
@@ -53,6 +53,10 @@ test('import interface reviews edits, excludes duplicates, preserves a failed sa
     assert.ok(calls.some(call => call.path.endsWith('/discard')));
     $('#upload-statement').click();
     assert.equal($('#statement-upload-form').hidden, false);
+    statements.openImported({ token: 'gmail-token', name: 'HDFC-5678.pdf', bank: 'HDFC', account: '5678',
+      sheets: [{ name: 'PDF', width: 3, rowCount: 4, headerRow: 0, mapping: { date: 0, merchant: 1, amount: 2 }, sample: [['Date', 'Description', 'Amount']] }] });
+    assert.equal($('#statement-map-form').hidden, false);
+    assert.match($('#statement-filename').textContent, /HDFC-5678\.pdf.*5678/);
   } finally {
     globalThis.document = previous.document; globalThis.FileReader = previous.FileReader; globalThis.Option = previous.Option; dom.window.close();
   }

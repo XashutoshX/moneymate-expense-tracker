@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-test('profile, people and splits persist in SQLite and pending splits are rejected', () => {
+test('profile, people, cards and splits persist in SQLite and pending splits are rejected', () => {
   const directory = mkdtempSync(join(tmpdir(), 'expense-feature-test-'));
   const script = `
     import assert from 'node:assert/strict';
@@ -21,6 +21,11 @@ test('profile, people and splits persist in SQLite and pending splits are reject
     assert.throws(() => addManualTransaction({ ...manualInput, bank: 'Invalid' }));
     featureRequest('/api/profile', 'POST', { name: 'Test User', photo: '' });
     assert.equal(featureRequest('/api/profile', 'GET').name, 'Test User');
+    const card = await featureRequest('/api/cards', 'POST', { bank: 'HDFC', variant: 'Test Card', cardholderName: 'Test User', lastFour: '1234', creditLimit: 50000000,
+      rewardBalance: 1200, pointsPerUnit: 4, spendUnit: 15000, pointValue: 50, milestoneSpend: 40000000, milestoneValue: 1000000 });
+    assert.equal((await featureRequest('/api/cards', 'GET'))[0].id, card.id);
+    await assert.rejects(featureRequest('/api/cards', 'POST', { bank: 'HDFC', variant: 'Bad Card', cardholderName: 'Test User', lastFour: '12', creditLimit: 1,
+      rewardBalance: 0, pointsPerUnit: 1, spendUnit: 100, pointValue: 1, milestoneSpend: 0, milestoneValue: 0 }), /valid card/);
     const person = featureRequest('/api/people', 'POST', { name: 'Friend' });
     assert.throws(() => featureRequest('/api/people', 'POST', { name: 'friend' }));
     db.prepare("INSERT INTO transactions (user_id,id,date,merchant,amount,type,account,category,review,note,time) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(userId(), 'test', '2026-09-09', 'Cafe', 101, 'expense', '1234', 'Food & dining', 1, '', '16:52:46');
@@ -42,6 +47,10 @@ test('profile, people and splits persist in SQLite and pending splits are reject
       import { db } from ${JSON.stringify(new URL('../src/store.js', import.meta.url).href)};
       assert.equal(listTransactions()[0].split.shares[0].amount, 51);
       assert.equal(featureRequest('/api/profile', 'GET').name, 'Test User');
+      const cards = await featureRequest('/api/cards', 'GET');
+      assert.equal(cards[0].variant, 'Test Card');
+      await featureRequest('/api/cards/' + cards[0].id, 'DELETE', {});
+      assert.equal((await featureRequest('/api/cards', 'GET')).length, 0);
       featureRequest('/api/splits/test', 'DELETE', {});
       assert.equal(listTransactions()[0].split, null);
       db.close();

@@ -5,7 +5,7 @@ const $ = selector => document.querySelector(selector);
 const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value / 100);
 const node = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
 
-export function setupFeatures(api, reload) {
+export function setupFeatures(api, reload, statementImporter) {
   const tableScroll = $('#transaction-scroll');
   function updateScrollButtons() {
     const rect = tableScroll.getBoundingClientRect();
@@ -21,7 +21,7 @@ export function setupFeatures(api, reload) {
   window.addEventListener('resize', updateScrollButtons);
   new ResizeObserver(updateScrollButtons).observe(tableScroll);
   new MutationObserver(updateScrollButtons).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
-  let profile = {}, people = [], transactions = [], activeSplit, photo = '', splitPosition;
+  let profile = {}, people = [], cards = [], transactions = [], activeSplit, photo = '', splitPosition;
   const sneezy = setupSneezy(() => transactions, (month, search) => {
     $('#date-from').value = month + '-01';
     const end = new Date(month + '-01T00:00:00Z'); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0);
@@ -55,30 +55,98 @@ export function setupFeatures(api, reload) {
     }));
     if (!people.length) $('#people-list').append(node('p', 'Add someone to split an expense.', 'muted'));
   }
+  function renderCards() {
+    const year = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric' }).format(new Date());
+    const results = cards.map(card => {
+      const matched = transactions.filter(transaction => !transaction.review && transaction.type === 'expense' && transaction.date.startsWith(year)
+        && String(transaction.bank || '').toLowerCase() === card.bank.toLowerCase() && String(transaction.account || '').endsWith(card.lastFour));
+      const spend = matched.reduce((sum, transaction) => sum + transaction.amount, 0);
+      const hasRule = card.spendUnit > 0 && card.pointsPerUnit > 0 && card.pointValue > 0;
+      const projectedPoints = hasRule ? matched.reduce((sum, transaction) => sum + Math.floor(transaction.amount / card.spendUnit) * card.pointsPerUnit, 0) : 0;
+      const returnRate = hasRule ? card.pointsPerUnit * card.pointValue / card.spendUnit * 100 : 0;
+      return { card, matched, spend, projectedPoints, returnRate };
+    });
+    $('#cards-empty').hidden = cards.length > 0;
+    $('#card-recommendation').hidden = !cards.length;
+    if (cards.length) {
+      const best = results.reduce((current, result) => result.returnRate > current.returnRate ? result : current, results[0]);
+      $('#card-recommendation').textContent = best.returnRate ? `${best.card.bank} ${best.card.variant} has the strongest entered base return at approximately ${best.returnRate.toFixed(2)}%. Category bonuses, exclusions and caps are not included yet.` : 'Import a statement to match transactions. Reward optimization will use verified card rules instead of asking you to enter them manually.';
+    }
+    $('#credit-card-list').replaceChildren(...results.map(({ card, matched, spend, projectedPoints, returnRate }) => {
+      const article = node('article', '', 'credit-card');
+      const heading = node('div', '', 'credit-card-heading');
+      const title = node('div', ''); title.append(node('p', card.bank, 'credit-card-bank'), node('h3', card.variant), node('span', `•••• ${card.lastFour}`, 'credit-card-number'));
+      const actions = node('div', '', 'card-heading-actions');
+      const statement = node('button', 'Import statement', 'secondary'); statement.type = 'button';
+      statement.onclick = async () => {
+        statement.disabled = true;
+        try {
+          let result;
+          try { result = await api(`/api/cards/${card.id}/statement`, 'POST', {}); }
+          catch (error) {
+            if (!/DDMM/.test(error.message) || typeof window?.prompt !== 'function') throw error;
+            const dobDayMonth = window.prompt('HDFC could not open the PDF using your name and card number. Enter birth day and month as DDMM. This is used once and is not saved:');
+            if (dobDayMonth === null) throw error;
+            result = await api(`/api/cards/${card.id}/statement`, 'POST', { dobDayMonth });
+          }
+          statementImporter.openImported(result);
+        } catch (error) { $('#card-recommendation').hidden = false; $('#card-recommendation').textContent = error.message; }
+        finally { statement.disabled = false; }
+      };
+      const remove = node('button', 'Remove', 'secondary'); remove.type = 'button';
+      remove.onclick = async () => {
+        if (!confirm(`Remove ${card.bank} ${card.variant} ending ${card.lastFour}?`)) return;
+        remove.disabled = true;
+        try { await api('/api/cards/' + card.id, 'DELETE'); cards = cards.filter(item => item.id !== card.id); renderCards(); }
+        catch (error) { $('#card-recommendation').hidden = false; $('#card-recommendation').textContent = error.message; remove.disabled = false; }
+      };
+      actions.append(statement, remove); heading.append(title, actions);
+      const metrics = node('div', '', 'credit-card-metrics');
+      for (const [label, value] of [
+        ['Credit limit', card.creditLimit ? money(card.creditLimit) : 'Not extracted yet'],
+        ['Reward balance', card.rewardBalance ? `${card.rewardBalance.toLocaleString('en-IN')} pts · ${money(card.rewardBalance * card.pointValue)}` : 'Not extracted yet'],
+        [`Matched ${year} spend`, money(spend)],
+        ['Projected base rewards', returnRate ? `${projectedPoints.toLocaleString('en-IN')} pts · ${money(projectedPoints * card.pointValue)}` : 'Rule pending']
+      ]) { const item = node('div', ''); item.append(node('span', label), node('strong', value)); metrics.append(item); }
+      article.append(heading, metrics, node('p', returnRate ? `${card.pointsPerUnit} point${card.pointsPerUnit === 1 ? '' : 's'} per ${money(card.spendUnit)} · approximately ${returnRate.toFixed(2)}% base value` : 'Statement matching is ready. Verified reward rules are not loaded yet.', 'card-rule-summary'));
+      if (card.milestoneSpend) {
+        const milestone = node('div', '', 'card-milestone');
+        const progress = document.createElement('progress'); progress.max = card.milestoneSpend; progress.value = Math.min(spend, card.milestoneSpend);
+        milestone.append(node('div', `Calendar-year milestone · ${money(spend)} of ${money(card.milestoneSpend)}`), progress,
+          node('small', spend >= card.milestoneSpend ? `Reached · entered reward value ${money(card.milestoneValue)}` : `${money(card.milestoneSpend - spend)} remaining · entered reward value ${money(card.milestoneValue)}`));
+        article.append(milestone);
+      }
+      article.append(node('small', `${matched.length} confirmed transaction${matched.length === 1 ? '' : 's'} matched by bank and last four digits.`, 'card-match-note'));
+      return article;
+    }));
+  }
   async function refresh(rows) {
     transactions = rows;
-    [profile, people] = await Promise.all([api('/api/profile'), api('/api/people')]);
+    [profile, people, cards] = await Promise.all([api('/api/profile'), api('/api/people'), api('/api/cards')]);
     $('#profile-name').textContent = profile.name || 'Your profile';
     $('#profile-email').textContent = profile.email || 'Connect Gmail';
     $('#profile-photo').hidden = !profile.photo; $('#profile-initial').hidden = Boolean(profile.photo);
     if (profile.photo) $('#profile-photo').src = profile.photo; else $('#profile-photo').removeAttribute('src');
     $('#profile-initial').textContent = (profile.name || 'You').slice(0, 1).toUpperCase();
     renderPeople();
+    renderCards();
     renderInsights();
     sneezy.render();
     updateScrollButtons();
   }
   function clear() {
-    profile = {}; people = []; transactions = [];
+    profile = {}; people = []; cards = []; transactions = [];
     $('#profile-name').textContent = 'Your profile'; $('#profile-email').textContent = 'Connect Gmail';
     $('#profile-photo').hidden = true; $('#profile-photo').removeAttribute('src'); $('#profile-initial').hidden = false; $('#profile-initial').textContent = 'Y';
     $('#people-list').replaceChildren(); $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
+    $('#credit-card-list').replaceChildren(); $('#card-recommendation').hidden = true; $('#cards-empty').hidden = false;
     updateScrollButtons();
   }
   function setTransactions(rows) {
     transactions = rows;
     renderPeople();
+    renderCards();
     renderInsights();
     sneezy.render();
     updateScrollButtons();
@@ -88,6 +156,15 @@ export function setupFeatures(api, reload) {
     const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
     try { const person = await api('/api/people', 'POST', { name: $('#person-name').value }); people = [...people, person]; $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
     catch (error) { $('#person-error').textContent = error.message; }
+    finally { submit.disabled = false; }
+  };
+  $('#add-card').onclick = () => { $('#card-form').reset(); $('#card-error').textContent = ''; $('#card-editor').showModal(); };
+  $('#card-cancel').onclick = () => $('#card-editor').close();
+  $('#card-form').onsubmit = async event => {
+    event.preventDefault(); const form = event.currentTarget, submit = form.querySelector('button[type=submit]'); submit.disabled = true;
+    const input = Object.fromEntries(new FormData(form));
+    try { const card = await api('/api/cards', 'POST', input); cards = [...cards, card]; renderCards(); $('#card-editor').close(); }
+    catch (error) { $('#card-error').textContent = error.message; }
     finally { submit.disabled = false; }
   };
   $('#add-person-toggle').onclick = () => { $('#person-form').hidden = !$('#person-form').hidden; $('#add-person-toggle').setAttribute('aria-expanded', String(!$('#person-form').hidden)); if (!$('#person-form').hidden) $('#person-name').focus({ preventScroll: true }); };
@@ -177,12 +254,12 @@ export function setupFeatures(api, reload) {
     }
     catch (error) { $('#split-error').textContent = error.message; }
   };
-  for (const view of ['ledger', 'deep', 'sneezy']) $('#' + view + '-tab').onclick = () => {
-    for (const name of ['ledger', 'deep', 'sneezy']) {
+  for (const view of ['ledger', 'deep', 'cards', 'sneezy']) $('#' + view + '-tab').onclick = () => {
+    for (const name of ['ledger', 'deep', 'cards', 'sneezy']) {
       $('#' + name + '-panel').hidden = name !== view;
       $('#' + name + '-tab').setAttribute('aria-pressed', String(name === view));
     }
-    renderInsights(); sneezy.render(); updateScrollButtons();
+    renderInsights(); renderCards(); sneezy.render(); updateScrollButtons();
   };
   $('#deep-month').value = $('#date-to').value.slice(0, 7); $('#deep-month').oninput = renderInsights;
   function renderInsights() {
