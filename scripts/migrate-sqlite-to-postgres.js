@@ -1,5 +1,9 @@
 if (!process.env.DATABASE_URL) throw new Error('Set DATABASE_URL before running the migration.');
+const databaseUrl = process.env.DATABASE_URL;
+process.env.SQLITE_SOURCE = 'true';
 const { db } = await import('../src/store.js');
+process.env.DATABASE_URL = databaseUrl;
+delete process.env.SQLITE_SOURCE;
 const { migratePostgres } = await import('../src/postgres-schema.js');
 const { transaction } = await import('../src/postgres.js');
 await migratePostgres();

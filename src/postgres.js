@@ -2,13 +2,11 @@ import pg from 'pg';
 
 const { Pool } = pg;
 const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required for PostgreSQL.');
-
-export const pool = new Pool({
+export const pool = connectionString ? new Pool({
   connectionString,
   max: Number(process.env.DATABASE_POOL_MAX || 10),
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }
-});
+}) : null;
 
 function placeholders(text) {
   let index = 0;
@@ -16,6 +14,7 @@ function placeholders(text) {
 }
 
 export async function query(text, params = []) {
+  if (!pool) throw new Error('DATABASE_URL is required for PostgreSQL.');
   return pool.query(placeholders(text), params);
 }
 
@@ -54,4 +53,4 @@ export async function transaction(callback) {
   }
 }
 
-export async function close() { await pool.end(); }
+export async function close() { if (pool) await pool.end(); }

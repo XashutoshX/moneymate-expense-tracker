@@ -1,10 +1,10 @@
-import { readTokens, saveTokens, get, set, db, userId } from './store.js';
+import { readTokens, saveTokens, get, set, one, run, userId } from './store.js';
 import { messageText } from './parser.js';
 import { bankFromSender, parseBank } from './banks.js';
 import { gmailError } from './google-errors.js';
 import { classify } from './categories.js';
 
-export const redirectUri = 'http://localhost:3000/auth/callback';
+export const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_ORIGIN || 'http://localhost:3000'}/auth/callback`;
 export const configured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 const quotaRetries = 4;
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -22,11 +22,11 @@ export async function exchange(params) {
   return { ...tokens, expires_at: Date.now() + tokens.expires_in * 1000 };
 }
 async function accessToken() {
-  let tokens = readTokens();
+  let tokens = await readTokens();
   if (!tokens) throw new Error('Connect Gmail first.');
   if (tokens.expires_at < Date.now() + 60000) {
     tokens = { ...tokens, ...await exchange({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }) };
-    saveTokens(tokens);
+    await saveTokens(tokens);
   }
   return tokens.access_token;
 }
@@ -48,46 +48,45 @@ export async function gmail(path, token) {
 export async function sync() {
   const startedAt = Date.now();
   // Backfill once when adding a sender so an existing sync cursor cannot hide older alerts.
-  const reparse = get('parserVersion') !== '5';
-  const backfillTime = get('timeVersion') !== '1';
-  const lastSync = get('senderVersion') === '4' && !reparse && !backfillTime ? Number(get('lastSync')) : 0;
+  const reparse = await get('parserVersion') !== '5';
+  const backfillTime = await get('timeVersion') !== '1';
+  const lastSync = await get('senderVersion') === '4' && !reparse && !backfillTime ? Number(await get('lastSync')) : 0;
   const after = Math.floor((lastSync || startedAt - 90 * 86400000) / 1000) - 2 * 86400;
   const query = `{from:hdfcbank.net from:hdfcbank.com from:alerts@hdfcbank.bank.in from:icici.bank.in from:credit_cards@icici.bank.in from:cbsalerts.sbi@alerts.sbi.bank.in} after:${after} {debited credited spent purchase paid withdrawn refund reversed}`;
   let pageToken = '', imported = 0, skipped = 0;
   do {
     const page = await gmail('messages?' + new URLSearchParams({ q: query, maxResults: '100', ...(pageToken ? { pageToken } : {}) }));
     for (const { id } of page.messages || []) {
-      if (db.prepare('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?').get(userId(), id)) continue;
-      const existing = db.prepare('SELECT review FROM transactions WHERE user_id=? AND id=?').get(userId(), id);
-      if (db.prepare('SELECT id FROM processed WHERE user_id=? AND id=?').get(userId(), id) && !(reparse && (!existing || existing.review)) && !backfillTime) continue;
+      if (await one('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?', [userId(), id])) continue;
+      const existing = await one('SELECT review FROM transactions WHERE user_id=? AND id=?', [userId(), id]);
+      if (await one('SELECT id FROM processed WHERE user_id=? AND id=?', [userId(), id]) && !(reparse && (!existing || existing.review)) && !backfillTime) continue;
       const message = await gmail(`messages/${id}?format=full`);
       // The user may delete this entry while the Gmail request is in flight.
-      if (db.prepare('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?').get(userId(), id)) continue;
+      if (await one('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?', [userId(), id])) continue;
       const sender = message.payload.headers?.find(h => h.name.toLowerCase() === 'from')?.value || '';
       const bank = bankFromSender(sender);
       const parsed = bank ? parseBank(bank, messageText(message.payload), Number(message.internalDate)) : null;
-      const transaction = parsed ? classify(parsed, get('autoReview') !== 'false') : null;
+      const transaction = parsed ? classify(parsed, await get('autoReview') !== 'false') : null;
       if (transaction) {
-        db.prepare(`INSERT INTO transactions
+        await run(`INSERT INTO transactions
           (user_id, id, date, merchant, amount, type, account, category, review, note, bank)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(user_id,id) DO UPDATE SET date=excluded.date, merchant=excluded.merchant,
             amount=excluded.amount, type=excluded.type, account=excluded.account, note=excluded.note,
             category=excluded.category, review=excluded.review
-          WHERE transactions.review=1`).run(userId(), id,
-          transaction.date, transaction.merchant, transaction.amount, transaction.type, transaction.account,
-          transaction.category, transaction.review, transaction.note, bank);
+          WHERE transactions.review=1`, [userId(), id, transaction.date, transaction.merchant, transaction.amount, transaction.type, transaction.account,
+          transaction.category, transaction.review, transaction.note, bank]);
         imported++;
         // Enrich old records without replacing confirmed dates, amounts or categories.
-        if (transaction.time) db.prepare("UPDATE transactions SET time=?, time_source=? WHERE user_id=? AND id=? AND time=''").run(transaction.time, transaction.timeSource, userId(), id);
+        if (transaction.time) await run("UPDATE transactions SET time=?, time_source=? WHERE user_id=? AND id=? AND time=''", [transaction.time, transaction.timeSource, userId(), id]);
       } else skipped++;
-      db.prepare('INSERT OR IGNORE INTO processed(user_id,id) VALUES (?,?)').run(userId(), id);
+      await run('INSERT INTO processed(user_id,id) VALUES (?,?) ON CONFLICT DO NOTHING', [userId(), id]);
     }
     pageToken = page.nextPageToken || '';
   } while (pageToken);
-  set('lastSync', String(startedAt));
-  set('senderVersion', '4');
-  set('parserVersion', '5');
-  set('timeVersion', '1');
+  await set('lastSync', String(startedAt));
+  await set('senderVersion', '4');
+  await set('parserVersion', '5');
+  await set('timeVersion', '1');
   return { imported, skipped };
 }

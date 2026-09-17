@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
-import { db, userId } from './store.js';
+import { db, userId, isPostgres, all, one, run, transaction } from './store.js';
 import { classify } from './categories.js';
 import { MAX_ROWS, normalizeRows, parseDate } from './statement-parser.js';
 
@@ -50,6 +50,21 @@ function sheetFor(entry, index) {
 }
 export function previewStatement(input) {
   settings(input);
+  if (isPostgres) return (async () => {
+    const entry = stage(input.token), sheet = sheetFor(entry, input.sheetIndex), result = normalizeRows(sheet.rows, input);
+    const existing = await all('SELECT id,date,amount,type,bank,account FROM transactions WHERE user_id=?', [userId()]);
+    const ids = new Set(existing.map(row => row.id));
+    for (const row of await all('SELECT id FROM deleted_transactions WHERE user_id=?', [userId()])) ids.add(row.id);
+    const similar = new Map();
+    for (const row of existing) { const key = `${row.date}:${row.amount}:${row.type}:${row.bank}`; const values = similar.get(key) || []; values.push(row); similar.set(key, values); }
+    const seen = new Set();
+    return { ...result, rows: result.rows.map(row => {
+      const key = `${row.date}:${row.amount}:${row.type}:${input.bank}`;
+      const duplicate = ids.has(sourceId(entry, input.sheetIndex, row.rowIndex));
+      const possibleDuplicate = !duplicate && (seen.has(key) || (similar.get(key) || []).some(value => !input.account || !value.account || value.account === input.account));
+      seen.add(key); return { ...row, category: classify(row, false).category, duplicate, possibleDuplicate };
+    }) };
+  })();
   const entry = stage(input.token), sheet = sheetFor(entry, input.sheetIndex);
   const result = normalizeRows(sheet.rows, input);
   const existing = db.prepare('SELECT id,date,amount,type,bank,account FROM transactions WHERE user_id=?').all(userId());
@@ -71,6 +86,7 @@ export function previewStatement(input) {
 }
 export function commitStatement(input) {
   settings(input);
+  if (isPostgres) return commitStatementPostgres(input);
   const entry = stage(input.token), sheet = sheetFor(entry, input.sheetIndex);
   if (!Array.isArray(input.rows) || !input.rows.length || input.rows.length > MAX_ROWS) throw new Error('Select between 1 and 5,000 transactions.');
   const rowNumbers = new Set();
@@ -94,6 +110,30 @@ export function commitStatement(input) {
     }
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
+  return { imported, skipped };
+}
+
+async function commitStatementPostgres(input) {
+  const entry = stage(input.token), sheet = sheetFor(entry, input.sheetIndex);
+  if (!Array.isArray(input.rows) || !input.rows.length || input.rows.length > MAX_ROWS) throw new Error('Select between 1 and 5,000 transactions.');
+  const rowNumbers = new Set();
+  for (const row of input.rows) {
+    if (!row || !Number.isInteger(row.rowIndex) || row.rowIndex < 0 || row.rowIndex >= sheet.rows.length || rowNumbers.has(row.rowIndex)) throw new Error('Invalid or repeated statement row.');
+    rowNumbers.add(row.rowIndex);
+    if (typeof row.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || parseDate(row.date) !== row.date || !Number.isSafeInteger(row.amount) || row.amount <= 0 || typeof row.merchant !== 'string' || !row.merchant.trim() || row.merchant.length > 100 || !['expense', 'income', 'refund', 'transfer', 'repayment'].includes(row.type)) throw new Error(`Check the date, description, amount and type on row ${row.rowIndex + 1}.`);
+    if (typeof row.category !== 'string' || !await one('SELECT name FROM categories WHERE user_id=? AND name=?', [userId(), row.category])) throw new Error(`Choose a category on row ${row.rowIndex + 1}.`);
+  }
+  let imported = 0, skipped = 0;
+  await transaction(async sql => {
+    for (const row of input.rows) {
+      const id = sourceId(entry, input.sheetIndex, row.rowIndex);
+      if (await sql.one('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?', [userId(), id])) { skipped++; continue; }
+      const result = await sql.run(`INSERT INTO transactions
+        (user_id,id,date,merchant,amount,type,account,category,review,note,time,time_source,bank,source_file)
+        VALUES (?,?,?,?,?,?,?,?,0,?,'','',?,?) ON CONFLICT(user_id,id) DO NOTHING`, [userId(), id, row.date, row.merchant.trim(), row.amount, row.type, input.account, row.category, `Reviewed statement import, ${sheet.name}, row ${row.rowIndex + 1}.`, input.bank, entry.name]);
+      if (result.changes) imported++; else skipped++;
+    }
+  });
   return { imported, skipped };
 }
 export function discardStatement(token) { staged.delete(token); return { ok: true }; }
