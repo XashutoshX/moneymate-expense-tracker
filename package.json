@@ -1,0 +1,26 @@
+{
+  "name": "hdfc-expense-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.13.0"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate-sqlite-to-postgres.js",
+    "test": "node --test",
+    "check": "node --check src/server.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "pdfjs-dist": "6.3.289",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "jsdom": "29.1.1"
+  }
+}
