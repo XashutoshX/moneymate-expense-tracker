@@ -5,10 +5,10 @@ import { randomBytes, createHash, createCipheriv, createDecipheriv } from 'node:
 import { defaultCategories, legacyIcons } from './categories.js';
 import { LOCAL_OWNER_ID, migrateOwnership } from './ownership-migration.js';
 import { all as pgAll, one as pgOne, run as pgRun, transaction as pgTransaction } from './postgres.js';
-import { migratePostgres } from './postgres-schema.js';
 
 export const isPostgres = Boolean(process.env.DATABASE_URL) && process.env.SQLITE_SOURCE !== 'true';
-export const ready = isPostgres ? migratePostgres() : Promise.resolve();
+// PostgreSQL schema changes run explicitly during deployment, never on requests.
+export const ready = Promise.resolve();
 let db;
 let key;
 if (!isPostgres) {

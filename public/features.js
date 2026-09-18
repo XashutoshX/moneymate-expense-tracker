@@ -79,7 +79,7 @@ export function setupFeatures(api, reload) {
   $('#person-form').onsubmit = async event => {
     event.preventDefault();
     const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
-    try { await api('/api/people', 'POST', { name: $('#person-name').value }); people = await api('/api/people'); $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
+    try { const person = await api('/api/people', 'POST', { name: $('#person-name').value }); people = [...people, person]; $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
     catch (error) { $('#person-error').textContent = error.message; }
     finally { submit.disabled = false; }
   };

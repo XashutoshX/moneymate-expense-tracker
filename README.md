@@ -23,7 +23,7 @@ npm run db:migrate
 
 The migration creates the PostgreSQL schema and copies the local SQLite users, sessions, settings, transactions, categories, people, splits and import ledgers. It is idempotent and does not delete the SQLite database. Keep `data/` as a backup until the migrated row counts have been checked. When `DATABASE_URL` is set, the application uses the PostgreSQL runtime store; without it, local development continues to use SQLite.
 
-For Vercel, also set `APP_ORIGIN` to the deployed HTTPS URL, `GOOGLE_REDIRECT_URI` to `${APP_ORIGIN}/auth/callback`, and `TOKEN_ENCRYPTION_KEY` to a base64 value generated from 32 random bytes. Keep `DATABASE_URL`, `DATABASE_SSL=true`, Google credentials, and the token key server-only environment variables.
+For Vercel, also set `APP_ORIGIN` to the deployed HTTPS URL, `GOOGLE_REDIRECT_URI` to `${APP_ORIGIN}/auth/callback`, and `TOKEN_ENCRYPTION_KEY` to a base64 value generated from 32 random bytes. Keep `DATABASE_URL`, `DATABASE_SSL=true`, Google credentials, and the token key server-only environment variables. PostgreSQL schema creation is intentionally not run during requests; run `npm run db:migrate` when the schema changes.
 
 ## Upload bank statements
 

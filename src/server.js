@@ -44,7 +44,10 @@ export async function handler(req, res) {
     const publicPath = ['/', '/app.js', '/api.js', '/statements.js', '/features.js', '/sneezy.js', '/splits.js', '/styles.css', '/transaction-delete.js', '/analytics.js'].includes(url.pathname);
     const publicRoute = publicPath || url.pathname === '/auth/connect' || url.pathname === '/auth/callback' || (url.pathname === '/api/status' && req.method === 'GET');
     const activeUser = await authenticatedUser;
-    if (!publicRoute) enterUser(await requireSession(req));
+    if (!publicRoute) {
+      if (!activeUser) await requireSession(req);
+      enterUser(activeUser);
+    }
     else if (activeUser) enterUser(activeUser);
     if (req.method !== 'GET') {
       const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
