@@ -47,7 +47,12 @@ export async function handler(req, res) {
     if (!publicRoute) enterUser(await requireSession(req));
     else if (activeUser) enterUser(activeUser);
     if (req.method !== 'GET') {
-      if (req.headers.origin !== origin) return json(res, { code: 'INVALID_ORIGIN', error: `Open the app at ${origin} to save changes.` }, 403);
+      const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
+      const forwardedProtocol = req.headers['x-forwarded-proto'] || (process.env.VERCEL ? 'https' : 'http');
+      const requestOrigin = forwardedHost ? `${forwardedProtocol}://${forwardedHost}`.replace(/\/+$/, '') : '';
+      const allowedOrigins = new Set([origin]);
+      if (process.env.VERCEL && requestOrigin) allowedOrigins.add(requestOrigin);
+      if (!allowedOrigins.has(req.headers.origin)) return json(res, { code: 'INVALID_ORIGIN', error: `Open the app at ${requestOrigin || origin} to save changes.` }, 403);
       if (req.headers['x-csrf-token'] !== csrf) return json(res, { code: 'CSRF_EXPIRED', error: 'The server restarted. Refresh the page and try again.' }, 403);
     }
     if (url.pathname === '/api/status' && req.method === 'GET') return json(res, {
