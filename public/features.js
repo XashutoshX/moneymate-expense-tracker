@@ -76,6 +76,13 @@ export function setupFeatures(api, reload) {
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
     updateScrollButtons();
   }
+  function setTransactions(rows) {
+    transactions = rows;
+    renderPeople();
+    renderInsights();
+    sneezy.render();
+    updateScrollButtons();
+  }
   $('#person-form').onsubmit = async event => {
     event.preventDefault();
     const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
@@ -153,11 +160,21 @@ export function setupFeatures(api, reload) {
   $('#split-editor').onclose = () => { if (splitPosition) window.scrollTo({ left: splitPosition.x, top: splitPosition.y, behavior: 'instant' }); };
   $('#split-form').onsubmit = async event => {
     event.preventDefault();
-    try { await api('/api/splits/' + activeSplit.id, 'POST', { mode: $('#split-mode').value, paidBy: $('#split-payer').value, participants: participants() }); await reload(); $('#split-editor').close(); }
+    try {
+      const split = await api('/api/splits/' + activeSplit.id, 'POST', { mode: $('#split-mode').value, paidBy: $('#split-payer').value, participants: participants() });
+      activeSplit.split = split;
+      const transaction = transactions.find(row => row.id === activeSplit.id); if (transaction) transaction.split = split;
+      setTransactions(transactions); await reload(transactions); $('#split-editor').close();
+    }
     catch (error) { $('#split-error').textContent = error.message; }
   };
   $('#split-remove').onclick = async () => {
-    try { await api('/api/splits/' + activeSplit.id, 'DELETE'); await reload(); $('#split-editor').close(); }
+    try {
+      await api('/api/splits/' + activeSplit.id, 'DELETE');
+      activeSplit.split = null;
+      const transaction = transactions.find(row => row.id === activeSplit.id); if (transaction) transaction.split = null;
+      setTransactions(transactions); await reload(transactions); $('#split-editor').close();
+    }
     catch (error) { $('#split-error').textContent = error.message; }
   };
   for (const view of ['ledger', 'deep', 'sneezy']) $('#' + view + '-tab').onclick = () => {
@@ -206,5 +223,5 @@ export function setupFeatures(api, reload) {
     if (!sorted.length) $('#category-breakdown').append(node('p', 'No confirmed expenses for this month.'));
     for (const [category, amount] of sorted) { const row = node('div', '', 'breakdown-row'); const bar = document.createElement('progress'); bar.max = current.expense || 1; bar.value = amount; row.append(node('span', category), bar, node('strong', money(amount))); $('#category-breakdown').append(row); }
   }
-  return { refresh, clear, openSplit };
+  return { refresh, clear, openSplit, setTransactions };
 }

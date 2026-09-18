@@ -70,7 +70,8 @@ async function loadCategories() {
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 $('#date-from').value = today.slice(0, 7) + '-01';
 $('#date-to').value = today;
-async function load() {
+async function load(rows) {
+  if (rows) { transactions = rows; render(); return; }
   const status = await api('/api/status');
   if (!status.authenticated) {
     $('#connection').textContent = 'Sign in with Google to create your private expense workspace.';
@@ -197,8 +198,11 @@ $('#edit-form').onsubmit = async event => {
   const save = $('#edit-form button[type=submit]'); save.disabled = true;
   try {
     const isNew = !selected.id;
-    await api(isNew ? '/api/transactions' : '/api/transactions/' + selected.id, isNew ? 'POST' : 'PATCH', data);
-    await load();
+    const result = await api(isNew ? '/api/transactions' : '/api/transactions/' + selected.id, isNew ? 'POST' : 'PATCH', data);
+    if (isNew) transactions = [{ ...data, id: result.id, amount: data.amount, review: 0, note: '', split: null }, ...transactions];
+    else Object.assign(selected, data, { review: 0, note: '' });
+    render();
+    features.setTransactions(transactions);
     $('#editor').close();
     restoreReviewPosition();
     if (isNew) $('#message').textContent = 'Manual transaction saved and confirmed. Date and bank filters still apply.';
