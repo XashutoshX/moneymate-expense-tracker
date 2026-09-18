@@ -247,8 +247,22 @@ $('#sync').onclick = async () => {
   finally { await load().catch(error => { $('#message').textContent = error.message; }); }
 };
 $('#disconnect').onclick = async () => {
-  try { await api('/api/disconnect', 'POST'); $('#message').textContent = 'Gmail disconnected. Your imported transactions remain on this computer.'; await load(); }
+  const button = $('#disconnect'); button.disabled = true;
+  try {
+    await api('/api/disconnect', 'POST');
+    transactions = [];
+    features.clear();
+    $('#connect').textContent = 'Connect Gmail';
+    $('#disconnect').hidden = true;
+    $('#sync').disabled = true;
+    $('#connection').textContent = 'Gmail disconnected. Connect again to view your private workspace.';
+    $('#last-sync').textContent = 'No imports yet';
+    $('#message').textContent = 'Gmail disconnected. Your data is hidden from this browser.';
+    $('#date-from').value = ''; $('#date-to').value = ''; $('#search').value = '';
+    render();
+  }
   catch (error) { $('#message').textContent = error.message; }
+  finally { button.disabled = false; }
 };
 $('#add-category').onclick = async () => {
   const button = $('#add-category'); button.disabled = true;
