@@ -69,10 +69,12 @@ export function sessionUser(token) {
   return row.user_id;
 }
 export function deleteSession(token) { if (!token) return; if (isPostgres) return (async () => { await ready; await pgRun('DELETE FROM sessions WHERE id_hash=?', [digest(token)]); })(); db.prepare('DELETE FROM sessions WHERE id_hash=?').run(digest(token)); }
-seedCategories(userId());
-db.prepare("INSERT OR IGNORE INTO categories(user_id,name,icon) SELECT ?, category, 'folder' FROM transactions WHERE category <> ''").run(userId());
-for (const [emoji, icon] of Object.entries(legacyIcons)) {
-  db.prepare('UPDATE categories SET icon=? WHERE user_id=? AND icon=?').run(icon, userId(), emoji);
+if (!isPostgres) {
+  seedCategories(userId());
+  db.prepare("INSERT OR IGNORE INTO categories(user_id,name,icon) SELECT ?, category, 'folder' FROM transactions WHERE category <> ''").run(userId());
+  for (const [emoji, icon] of Object.entries(legacyIcons)) {
+    db.prepare('UPDATE categories SET icon=? WHERE user_id=? AND icon=?').run(icon, userId(), emoji);
+  }
 }
 export function get(key) { if (isPostgres) return (async () => { await ready; return (await pgOne('SELECT value FROM settings WHERE user_id=? AND key=?', [userId(), key]))?.value; })(); return db.prepare('SELECT value FROM settings WHERE user_id=? AND key=?').get(userId(), key)?.value; }
 export function set(key, value) { if (isPostgres) return (async () => { await ready; await pgRun('INSERT INTO settings(user_id,key,value) VALUES (?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=EXCLUDED.value', [userId(), key, value]); })(); return db.prepare('INSERT OR REPLACE INTO settings(user_id,key,value) VALUES (?, ?, ?)').run(userId(), key, value); }
