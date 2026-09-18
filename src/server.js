@@ -41,7 +41,7 @@ export async function handler(req, res) {
   try {
     await ready;
     const authenticatedUser = sessionUser(cookie(req, 'session'));
-    const publicPath = ['/', '/app.js', '/api.js', '/statements.js', '/features.js', '/sneezy.js', '/splits.js', '/styles.css', '/transaction-delete.js', '/analytics.js'].includes(url.pathname);
+    const publicPath = ['/', '/privacy-policy', '/terms-of-service', '/app.js', '/api.js', '/statements.js', '/features.js', '/sneezy.js', '/splits.js', '/styles.css', '/transaction-delete.js', '/analytics.js'].includes(url.pathname);
     const publicRoute = publicPath || url.pathname === '/auth/connect' || url.pathname === '/auth/callback' || (url.pathname === '/api/status' && req.method === 'GET');
     const activeUser = await authenticatedUser;
     if (!publicRoute) {
@@ -159,7 +159,7 @@ export async function handler(req, res) {
       if (input.time !== undefined) await run('UPDATE transactions SET time=?, time_source=? WHERE user_id=? AND id=?', [input.time, input.time ? 'manual' : '', userId(), id]);
       return json(res, { ok: true });
     }
-    const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/api.js': ['api.js', 'text/javascript'], '/statements.js': ['statements.js', 'text/javascript'], '/features.js': ['features.js', 'text/javascript'], '/sneezy.js': ['sneezy.js', 'text/javascript'], '/splits.js': ['splits.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
+    const files = { '/privacy-policy': ['privacy-policy.html', 'text/html; charset=utf-8'], '/terms-of-service': ['terms-of-service.html', 'text/html; charset=utf-8'], '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/api.js': ['api.js', 'text/javascript'], '/statements.js': ['statements.js', 'text/javascript'], '/features.js': ['features.js', 'text/javascript'], '/sneezy.js': ['sneezy.js', 'text/javascript'], '/splits.js': ['splits.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };
     files['/transaction-delete.js'] = ['transaction-delete.js', 'text/javascript'];
     files['/analytics.js'] = ['analytics.js', 'text/javascript'];
     if (req.method === 'GET' && files[url.pathname]) {
