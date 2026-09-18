@@ -78,8 +78,13 @@ if (!isPostgres) {
 }
 export function get(key) { if (isPostgres) return (async () => { await ready; return (await pgOne('SELECT value FROM settings WHERE user_id=? AND key=?', [userId(), key]))?.value; })(); return db.prepare('SELECT value FROM settings WHERE user_id=? AND key=?').get(userId(), key)?.value; }
 export function set(key, value) { if (isPostgres) return (async () => { await ready; await pgRun('INSERT INTO settings(user_id,key,value) VALUES (?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=EXCLUDED.value', [userId(), key, value]); })(); return db.prepare('INSERT OR REPLACE INTO settings(user_id,key,value) VALUES (?, ?, ?)').run(userId(), key, value); }
-export async function all(sql, params = []) { await ready; return isPostgres ? pgAll(sql, params) : db.prepare(sql).all(...params); }
-export async function one(sql, params = []) { await ready; return isPostgres ? pgOne(sql, params) : db.prepare(sql).get(...params); }
+function normalizeRow(row) {
+  if (!row) return row;
+  for (const field of ['amount', 'review', 'expires_at']) if (typeof row[field] === 'string' && /^-?\d+$/.test(row[field])) row[field] = Number(row[field]);
+  return row;
+}
+export async function all(sql, params = []) { await ready; return isPostgres ? (await pgAll(sql, params)).map(normalizeRow) : db.prepare(sql).all(...params); }
+export async function one(sql, params = []) { await ready; return isPostgres ? normalizeRow(await pgOne(sql, params)) : db.prepare(sql).get(...params); }
 export async function run(sql, params = []) { await ready; return isPostgres ? pgRun(sql, params) : db.prepare(sql).run(...params); }
 export async function transaction(callback) { await ready; return isPostgres ? pgTransaction(callback) : callback({ all: async (sql, params) => db.prepare(sql).all(...params), one: async (sql, params) => db.prepare(sql).get(...params), run: async (sql, params) => db.prepare(sql).run(...params) }); }
 export function saveTokens(tokens) {
