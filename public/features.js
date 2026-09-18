@@ -45,14 +45,7 @@ export function setupFeatures(api, reload) {
     finally { button.disabled = false; }
   };
   function personName(id) { return id === 'me' ? 'You' : people.find(p => p.id === id)?.name || 'Unknown person'; }
-  async function refresh(rows) {
-    transactions = rows;
-    [profile, people] = await Promise.all([api('/api/profile'), api('/api/people')]);
-    $('#profile-name').textContent = profile.name || 'Your profile';
-    $('#profile-email').textContent = profile.email || 'Connect Gmail';
-    $('#profile-photo').hidden = !profile.photo; $('#profile-initial').hidden = Boolean(profile.photo);
-    if (profile.photo) $('#profile-photo').src = profile.photo; else $('#profile-photo').removeAttribute('src');
-    $('#profile-initial').textContent = (profile.name || 'You').slice(0, 1).toUpperCase();
+  function renderPeople() {
     const net = balances(transactions, people);
     $('#people-list').replaceChildren(...people.map(person => {
       const item = node('div', '', 'person-balance');
@@ -61,6 +54,16 @@ export function setupFeatures(api, reload) {
       return item;
     }));
     if (!people.length) $('#people-list').append(node('p', 'Add someone to split an expense.', 'muted'));
+  }
+  async function refresh(rows) {
+    transactions = rows;
+    [profile, people] = await Promise.all([api('/api/profile'), api('/api/people')]);
+    $('#profile-name').textContent = profile.name || 'Your profile';
+    $('#profile-email').textContent = profile.email || 'Connect Gmail';
+    $('#profile-photo').hidden = !profile.photo; $('#profile-initial').hidden = Boolean(profile.photo);
+    if (profile.photo) $('#profile-photo').src = profile.photo; else $('#profile-photo').removeAttribute('src');
+    $('#profile-initial').textContent = (profile.name || 'You').slice(0, 1).toUpperCase();
+    renderPeople();
     renderInsights();
     sneezy.render();
     updateScrollButtons();
@@ -75,8 +78,10 @@ export function setupFeatures(api, reload) {
   }
   $('#person-form').onsubmit = async event => {
     event.preventDefault();
-    try { await api('/api/people', 'POST', { name: $('#person-name').value }); $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); await reload(); }
+    const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
+    try { await api('/api/people', 'POST', { name: $('#person-name').value }); people = await api('/api/people'); $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
     catch (error) { $('#person-error').textContent = error.message; }
+    finally { submit.disabled = false; }
   };
   $('#add-person-toggle').onclick = () => { $('#person-form').hidden = !$('#person-form').hidden; $('#add-person-toggle').setAttribute('aria-expanded', String(!$('#person-form').hidden)); if (!$('#person-form').hidden) $('#person-name').focus({ preventScroll: true }); };
   $('#edit-profile').onclick = () => {
