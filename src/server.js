@@ -80,7 +80,7 @@ export async function handler(req, res) {
       return json(res, { ok: true });
     }
     if (url.pathname === '/auth/connect' && req.method === 'GET') {
-      if (!configured()) return redirect(res, '/?error=Configure%20Google%20credentials%20in%20.env%20first.');
+      if (!configured()) return redirect(res, '/?error=Configure%20Google%20credentials%20in%20the%20deployment%20environment%20first.');
       const state = randomBytes(32).toString('hex'), verifier = randomBytes(48).toString('base64url');
       for (const [key, value] of pending) if (value.until < Date.now()) pending.delete(key);
       pending.set(state, { verifier, until: Date.now() + 600000 });
