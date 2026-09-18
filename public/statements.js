@@ -14,9 +14,11 @@ function valid(row) {
     && row.merchant.trim().length > 0 && row.merchant.length <= 100 && Number.isSafeInteger(row.amount) && row.amount > 0 && types.includes(row.type);
 }
 export function setupStatements(api, reload, categories) {
-  const open = el('button', 'Upload statement'); open.type = 'button'; open.id = 'upload-statement'; open.className = 'secondary';
-  const actions = el('div'); actions.className = 'statement-actions';
-  $('#add-transaction').before(actions); actions.append(open, $('#add-transaction'));
+  let open = $('#upload-statement');
+  if (!open) {
+    open = el('button', 'Upload statement'); open.type = 'button'; open.id = 'upload-statement'; open.className = 'secondary';
+    $('#add-transaction').before(open);
+  }
   const dialog = el('dialog'); dialog.id = 'statement-editor'; dialog.setAttribute('aria-labelledby', 'statement-title');
   // Static markup only. File contents are always rendered using textContent.
   dialog.innerHTML = `
