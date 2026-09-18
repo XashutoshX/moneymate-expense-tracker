@@ -11,7 +11,7 @@ import { uploadStatement, previewStatement, commitStatement, discardStatement, M
 
 const port = Number(process.env.PORT || 3000);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be between 1024 and 65535.');
-const origin = process.env.APP_ORIGIN || `http://localhost:${port}`;
+const origin = (process.env.APP_ORIGIN || `http://localhost:${port}`).replace(/\/+$/, '');
 const csrf = randomBytes(32).toString('hex');
 const pending = new Map();
 let syncing = false;
