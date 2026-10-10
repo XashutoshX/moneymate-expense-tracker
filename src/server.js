@@ -16,7 +16,9 @@ const csrf = randomBytes(32).toString('hex');
 const pending = new Map();
 let syncing = false;
 const cookie = (req, name) => req.headers.cookie?.split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1) || '';
-const sessionCookie = token => `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`;
+// Keep the login in the current browser session so a shared browser does not
+// silently reopen the previous user's financial workspace days later.
+const sessionCookie = token => `session=${token}; HttpOnly; SameSite=Lax; Path=/`;
 async function requireSession(req) {
   const id = await sessionUser(cookie(req, 'session'));
   if (!id) { const error = new Error('Sign in with Google to continue.'); error.status = 401; throw error; }
@@ -58,8 +60,14 @@ export async function handler(req, res) {
       if (!allowedOrigins.has(req.headers.origin)) return json(res, { code: 'INVALID_ORIGIN', error: `Open the app at ${requestOrigin || origin} to save changes.` }, 403);
       if (req.headers['x-csrf-token'] !== csrf) return json(res, { code: 'CSRF_EXPIRED', error: 'The server restarted. Refresh the page and try again.' }, 403);
     }
-    if (url.pathname === '/api/status' && req.method === 'GET') return json(res, {
-      authenticated: Boolean(activeUser), csrf, configured: configured(), connected: Boolean(activeUser && await get('tokens')), email: activeUser ? await get('email') : '', lastSync: activeUser ? await get('lastSync') : '', syncing: Boolean(activeUser && syncing), autoReview: activeUser ? (await get('autoReview')) !== 'false' : true });
+    if (url.pathname === '/api/status' && req.method === 'GET') {
+      if (activeUser) res.setHeader('Set-Cookie', sessionCookie(cookie(req, 'session')));
+      const [tokens, email, lastSync, autoReview] = activeUser
+        ? await Promise.all([get('tokens'), get('email'), get('lastSync'), get('autoReview')])
+        : ['', '', '', ''];
+      return json(res, { authenticated: Boolean(activeUser), csrf, configured: configured(), connected: Boolean(tokens), email, lastSync,
+        syncing: Boolean(activeUser && syncing), autoReview: activeUser ? autoReview !== 'false' : true });
+    }
     if (url.pathname === '/api/statements/upload' && req.method === 'POST') return json(res, await uploadStatement(await body(req, Math.ceil(MAX_FILE_BYTES / 3) * 4 + 4096)));
     if (url.pathname === '/api/statements/preview' && req.method === 'POST') return json(res, await previewStatement(await body(req)));
     if (url.pathname === '/api/statements/commit' && req.method === 'POST') return json(res, await commitStatement(await body(req, 5 * 1024 * 1024)));
@@ -95,7 +103,7 @@ export async function handler(req, res) {
       res.setHeader('Set-Cookie', `oauth_state=${state}; HttpOnly; SameSite=Lax; Path=/auth; Max-Age=600`);
       return redirect(res, 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: redirectUri, response_type: 'code',
-        scope: 'https://www.googleapis.com/auth/gmail.readonly', access_type: 'offline', prompt: 'consent',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly', access_type: 'offline', prompt: 'select_account consent',
         state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }));
     }
     if (url.pathname === '/auth/callback' && req.method === 'GET') {
@@ -133,6 +141,8 @@ export async function handler(req, res) {
         if (!response.ok && response.status !== 400) throw new Error('Google could not revoke access. Please retry.');
       }
       await run("DELETE FROM settings WHERE user_id=? AND key='tokens'", [userId()]);
+      await deleteSession(cookie(req, 'session'));
+      res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
       return json(res, { ok: true });
     }
     if (url.pathname === '/auth/logout' && req.method === 'GET') {
@@ -146,17 +156,21 @@ export async function handler(req, res) {
     }
     if (url.pathname.startsWith('/api/transactions/') && req.method === 'PATCH') {
       const id = url.pathname.split('/').pop(), input = await body(req);
-      if (!await one('SELECT id FROM transactions WHERE user_id=? AND id=?', [userId(), id])) return json(res, { error: 'Transaction not found.' }, 404);
-      const previous = await one('SELECT amount, type FROM transactions WHERE user_id=? AND id=?', [userId(), id]);
-      if (await one('SELECT transaction_id FROM splits WHERE user_id=? AND transaction_id=?', [userId(), id]) && (previous.amount !== input.amount || input.type !== 'expense')) throw new Error('Remove the split before changing its amount or transaction type.');
       if (input.time !== undefined && (typeof input.time !== 'string' || (input.time && !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(input.time)))) throw new Error('Enter a valid transaction time.');
-      if (!await one('SELECT name FROM categories WHERE user_id=? AND name=?', [userId(), input.category])) throw new Error('Choose an existing category or add a new one first.');
       if (!['expense', 'income', 'refund', 'transfer', 'repayment', 'ignored'].includes(input.type) ||
           !Number.isSafeInteger(input.amount) || input.amount <= 0 || typeof input.merchant !== 'string' || !input.merchant.trim() || input.merchant.length > 100 ||
           typeof input.category !== 'string' || input.category.length > 60 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
           !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date) throw new Error('Enter a valid date, amount, merchant and type.');
-      await run('UPDATE transactions SET date=?, merchant=?, amount=?, type=?, category=?, review=0, note=? WHERE user_id=? AND id=?', [input.date, input.merchant.trim(), input.amount, input.type, input.category || 'Uncategorized', '', userId(), id]);
-      if (input.time !== undefined) await run('UPDATE transactions SET time=?, time_source=? WHERE user_id=? AND id=?', [input.time, input.time ? 'manual' : '', userId(), id]);
+      const existing = await one(`SELECT t.amount, t.time, t.time_source,
+        EXISTS(SELECT 1 FROM splits WHERE user_id=? AND transaction_id=?) AS has_split,
+        EXISTS(SELECT 1 FROM categories WHERE user_id=? AND name=?) AS category_exists
+        FROM transactions t WHERE t.user_id=? AND t.id=?`, [userId(), id, userId(), input.category, userId(), id]);
+      if (!existing) return json(res, { error: 'Transaction not found.' }, 404);
+      if (existing.has_split && (existing.amount !== input.amount || input.type !== 'expense')) throw new Error('Remove the split before changing its amount or transaction type.');
+      if (!existing.category_exists) throw new Error('Choose an existing category or add a new one first.');
+      const time = input.time === undefined ? existing.time : input.time;
+      const timeSource = input.time === undefined ? existing.time_source : input.time ? 'manual' : '';
+      await run('UPDATE transactions SET date=?, merchant=?, amount=?, type=?, category=?, review=0, note=?, time=?, time_source=? WHERE user_id=? AND id=?', [input.date, input.merchant.trim(), input.amount, input.type, input.category, '', time, timeSource, userId(), id]);
       return json(res, { ok: true });
     }
     const files = { '/privacy-policy': ['privacy-policy.html', 'text/html; charset=utf-8'], '/terms-of-service': ['terms-of-service.html', 'text/html; charset=utf-8'], '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/api.js': ['api.js', 'text/javascript'], '/statements.js': ['statements.js', 'text/javascript'], '/features.js': ['features.js', 'text/javascript'], '/sneezy.js': ['sneezy.js', 'text/javascript'], '/splits.js': ['splits.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'] };

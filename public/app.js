@@ -88,9 +88,9 @@ async function load(rows) {
   $('#disconnect').hidden = !status.connected;
   $('#last-sync').textContent = status.lastSync ? `Last sync: ${new Date(Number(status.lastSync)).toLocaleString('en-IN')}` : 'No imports yet';
   $('#auto-review').disabled = !status.connected;
-  await loadCategories();
+  const [loadedTransactions] = await Promise.all([api('/api/transactions'), loadCategories()]);
   $('#ledger-panel').hidden = false;
-  transactions = await api('/api/transactions'); render();
+  transactions = loadedTransactions; render();
   await features.refresh(transactions);
 }
 function render() {
@@ -182,6 +182,7 @@ function edit(transaction) {
   form.elements.bank.value = transaction.bank || 'Cash';
   $('#source').hidden = !transaction.id || transaction.id.startsWith('manual-') || transaction.id.startsWith('statement-');
   for (const key of ['date', 'merchant', 'type', 'category']) form.elements[key].value = transaction[key];
+  updateSaveAndSplit();
   form.elements.time.value = transaction.time || '';
   previewCategory();
   form.elements.amount.value = (transaction.amount / 100).toFixed(2);
@@ -193,9 +194,11 @@ function edit(transaction) {
 }
 $('#edit-form').onsubmit = async event => {
   event.preventDefault(); const form = event.currentTarget;
+  const splitAfterSave = event.submitter?.id === 'save-and-split';
   const data = Object.fromEntries(new FormData(form));
   data.amount = Math.round(Number(data.amount) * 100);
-  const save = $('#edit-form button[type=submit]'); save.disabled = true;
+  const saveButtons = [...form.querySelectorAll('button[type=submit]')];
+  for (const button of saveButtons) button.disabled = true;
   try {
     const isNew = !selected.id;
     const result = await api(isNew ? '/api/transactions' : '/api/transactions/' + selected.id, isNew ? 'POST' : 'PATCH', data);
@@ -205,10 +208,11 @@ $('#edit-form').onsubmit = async event => {
     features.setTransactions(transactions);
     $('#editor').close();
     restoreReviewPosition();
+    if (splitAfterSave) features.openSplit(selected);
     if (isNew) $('#message').textContent = 'Manual transaction saved and confirmed. Date and bank filters still apply.';
   }
   catch (error) { $('#edit-error').textContent = error.message; }
-  finally { save.disabled = false; }
+  finally { for (const button of saveButtons) button.disabled = false; }
 };
 $('#add-transaction').onclick = () => edit({ date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()), time: '', merchant: '', amount: 0, type: 'expense', category: 'Uncategorized', bank: 'Cash', note: 'Enter a transaction yourself. It will count toward your totals immediately.' });
 $('#cancel').onclick = () => $('#editor').close();
@@ -222,6 +226,8 @@ function restoreReviewPosition() {
 }
 $('#editor').addEventListener('close', restoreReviewPosition);
 $('#category-select').onchange = previewCategory;
+function updateSaveAndSplit() { $('#save-and-split').hidden = !selected?.id || $('#edit-form').elements.type.value !== 'expense'; }
+$('#edit-form').elements.type.onchange = updateSaveAndSplit;
 const clearDayFilter = document.createElement('button'); clearDayFilter.id = 'clear-day-filter'; clearDayFilter.className = 'secondary clear-day-filter'; clearDayFilter.type = 'button'; clearDayFilter.textContent = 'Clear date filter'; clearDayFilter.hidden = true; clearDayFilter.onclick = () => { selectedHeatmapDate = ''; $('#date-from').value = ''; $('#date-to').value = ''; render(); };
 $('#review-summary').append(clearDayFilter);
 const clearDateSelection = () => { selectedHeatmapDate = ''; render(); };
@@ -255,9 +261,9 @@ $('#disconnect').onclick = async () => {
     $('#connect').textContent = 'Connect Gmail';
     $('#disconnect').hidden = true;
     $('#sync').disabled = true;
-    $('#connection').textContent = 'Gmail disconnected. Connect again to view your private workspace.';
+    $('#connection').textContent = 'Signed out. Connect Gmail again to view your private workspace.';
     $('#last-sync').textContent = 'No imports yet';
-    $('#message').textContent = 'Gmail disconnected. Your data is hidden from this browser.';
+    $('#message').textContent = 'Gmail disconnected and you are signed out. Your data is hidden from this browser.';
     $('#date-from').value = ''; $('#date-to').value = ''; $('#search').value = '';
     render();
   }
