@@ -49,8 +49,23 @@ export function setupFeatures(api, reload, statementImporter) {
     const net = balances(transactions, people);
     $('#people-list').replaceChildren(...people.map(person => {
       const item = node('div', '', 'person-balance');
-      const value = net.get(person.id) || 0;
-      item.append(node('strong', person.name), node('span', value > 0 ? `Owes you ${money(value)}` : value < 0 ? `You owe ${money(-value)}` : 'Settled / no balance', value < 0 ? 'owed' : 'receivable'));
+      const value = (net.get(person.id) || 0) - (person.settledBalance || 0);
+      const heading = node('div', '', 'person-balance-heading'), settle = node('button', value ? 'Settle up' : 'Settled', 'secondary');
+      settle.type = 'button'; settle.disabled = !value;
+      settle.onclick = async () => {
+        const message = value > 0 ? `Mark ${person.name}'s ${money(value)} payment as settled?` : `Mark your ${money(-value)} payment to ${person.name} as settled?`;
+        if (!confirm(message)) return;
+        const previous = person.settledBalance || 0;
+        person.settledBalance = net.get(person.id) || 0; renderPeople();
+        try {
+          const result = await api(`/api/people/${person.id}/settle`, 'POST', {});
+          person.settledBalance = result.settledBalance; $('#people-status').textContent = `${person.name} is settled up. New splits will start from ₹0.`; renderPeople();
+        } catch (error) {
+          person.settledBalance = previous; $('#people-status').textContent = error.message; renderPeople();
+        }
+      };
+      heading.append(node('strong', person.name), settle);
+      item.append(heading, node('span', value > 0 ? `Owes you ${money(value)}` : value < 0 ? `You owe ${money(-value)}` : 'Settled / no balance', value < 0 ? 'owed' : 'receivable'));
       return item;
     }));
     if (!people.length) $('#people-list').append(node('p', 'Add someone to split an expense.', 'muted'));
@@ -139,6 +154,7 @@ export function setupFeatures(api, reload, statementImporter) {
     $('#profile-name').textContent = 'Your profile'; $('#profile-email').textContent = 'Connect Gmail';
     $('#profile-photo').hidden = true; $('#profile-photo').removeAttribute('src'); $('#profile-initial').hidden = false; $('#profile-initial').textContent = 'Y';
     $('#people-list').replaceChildren(); $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
+    $('#people-status').textContent = '';
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
     $('#credit-card-list').replaceChildren(); $('#card-recommendation').hidden = true; $('#cards-empty').hidden = false;
     updateScrollButtons();

@@ -63,6 +63,7 @@ dialog{color:var(--ink);background:var(--surface);border:1px solid var(--line);b
 @media(max-width:900px){.credit-card-grid{grid-template-columns:1fr}}
 @media(max-width:520px){.credit-card-metrics,.card-rule-fields{grid-template-columns:1fr}}
 .card-heading-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.credit-card-heading .card-heading-actions button:first-child{color:var(--accent)}
+.person-balance-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.person-balance-heading button{min-height:28px;padding:5px 8px;font-size:11px}
 
 
 /* Public legal pages and header links. */

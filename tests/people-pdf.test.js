@@ -19,6 +19,7 @@ test('report matches net balances and includes payers outside the split particip
   assert.equal(report[0].transactions[1].share, 0);
   assert.equal(report[1].transactions[1].balance, 0);
   assert.equal(report[2].transactions.length, 0);
+  assert.equal(peopleReport(rows, [{ ...people[0], settledBalance: -5000 }])[0].balance, 0);
 });
 
 test('PDF contains balances, details, continued pages and an empty state', async () => {

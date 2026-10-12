@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db, get, set, userId, isPostgres, all, one, run, transaction } from './store.js';
-import { allocate } from '../public/splits.js';
+import { allocate, balances } from '../public/splits.js';
 
 export function listTransactions() {
   if (isPostgres) return (async () => (await all(`SELECT t.*, s.data AS split_json FROM transactions t LEFT JOIN splits s ON s.user_id=t.user_id AND s.transaction_id=t.id WHERE t.user_id=? ORDER BY date DESC, time DESC, t.id DESC`, [userId()])).map(({ split_json, ...t }) => ({ ...t, split: split_json ? JSON.parse(split_json) : null })))();
@@ -36,6 +36,16 @@ export function deleteTransaction(id) {
 function cardList(value) {
   try { const cards = JSON.parse(value || '[]'); return Array.isArray(cards) ? cards : []; }
   catch { return []; }
+}
+function settlementMap(value) {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+function withSettlements(people, value) {
+  const settled = settlementMap(value);
+  return people.map(person => ({ ...person, settledBalance: Number.isSafeInteger(settled[person.id]) ? settled[person.id] : 0 }));
 }
 async function cardRequest(path, method, input) {
   const cards = cardList(await get('creditCards'));
@@ -75,13 +85,22 @@ export function featureRequest(path, method, input) {
     set('profileName', input.name.trim()); set('profilePhoto', input.photo);
     return { ok: true };
   }
-  if (path === '/api/people' && method === 'GET') return db.prepare('SELECT id,name FROM people WHERE user_id=? ORDER BY name').all(userId());
+  if (path === '/api/people' && method === 'GET') return withSettlements(db.prepare('SELECT id,name FROM people WHERE user_id=? ORDER BY name').all(userId()), get('peopleSettlements'));
   if (path === '/api/people' && method === 'POST') {
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     if (!name || name.length > 60) throw new Error('Enter a person name up to 60 characters.');
     if (db.prepare('SELECT id FROM people WHERE user_id=? AND name=? COLLATE NOCASE').get(userId(),name)) throw new Error('This person already exists.');
     const id = randomUUID(); db.prepare('INSERT INTO people(user_id,id,name) VALUES (?, ?, ?)').run(userId(),id,name);
-    return { id, name };
+    return { id, name, settledBalance: 0 };
+  }
+  if (path.startsWith('/api/people/') && path.endsWith('/settle') && method === 'POST') {
+    const id = decodeURIComponent(path.slice('/api/people/'.length, -'/settle'.length));
+    const people = db.prepare('SELECT id,name FROM people WHERE user_id=? ORDER BY name').all(userId());
+    if (!people.some(person => person.id === id)) throw new Error('Person not found.');
+    const settled = settlementMap(get('peopleSettlements'));
+    settled[id] = balances(listTransactions(), people).get(id) || 0;
+    set('peopleSettlements', JSON.stringify(settled));
+    return { id, settledBalance: settled[id] };
   }
   if (path.startsWith('/api/splits/') && ['POST', 'DELETE'].includes(method)) {
     const id = decodeURIComponent(path.slice('/api/splits/'.length));
@@ -106,12 +125,21 @@ async function featureRequestPostgres(path, method, input) {
     if (typeof input.photo !== 'string' || input.photo.length > 400000 || (input.photo && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(input.photo))) throw new Error('Choose a PNG, JPEG or WebP photo under 250 KB.');
     await set('profileName', input.name.trim()); await set('profilePhoto', input.photo); return { ok: true };
   }
-  if (path === '/api/people' && method === 'GET') return all('SELECT id,name FROM people WHERE user_id=? ORDER BY name', [userId()]);
+  if (path === '/api/people' && method === 'GET') return withSettlements(await all('SELECT id,name FROM people WHERE user_id=? ORDER BY name', [userId()]), await get('peopleSettlements'));
   if (path === '/api/people' && method === 'POST') {
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     if (!name || name.length > 60) throw new Error('Enter a person name up to 60 characters.');
     if (await one('SELECT id FROM people WHERE user_id=? AND LOWER(name)=LOWER(?)', [userId(), name])) throw new Error('This person already exists.');
-    const id = randomUUID(); await run('INSERT INTO people(user_id,id,name) VALUES (?,?,?)', [userId(), id, name]); return { id, name };
+    const id = randomUUID(); await run('INSERT INTO people(user_id,id,name) VALUES (?,?,?)', [userId(), id, name]); return { id, name, settledBalance: 0 };
+  }
+  if (path.startsWith('/api/people/') && path.endsWith('/settle') && method === 'POST') {
+    const id = decodeURIComponent(path.slice('/api/people/'.length, -'/settle'.length));
+    const people = await all('SELECT id,name FROM people WHERE user_id=? ORDER BY name', [userId()]);
+    if (!people.some(person => person.id === id)) throw new Error('Person not found.');
+    const settled = settlementMap(await get('peopleSettlements'));
+    settled[id] = balances(await listTransactions(), people).get(id) || 0;
+    await set('peopleSettlements', JSON.stringify(settled));
+    return { id, settledBalance: settled[id] };
   }
   if (path.startsWith('/api/splits/') && ['POST', 'DELETE'].includes(method)) {
     const id = decodeURIComponent(path.slice('/api/splits/'.length));

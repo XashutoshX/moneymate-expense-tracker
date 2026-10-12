@@ -10,7 +10,7 @@ export function peopleReport(rows, people) {
   const net = balances(confirmed, people);
   const name = id => id === 'me' ? 'You' : people.find(p => p.id === id)?.name || 'Unknown person';
   return people.map(person => ({
-    ...person, balance: net.get(person.id) || 0,
+    ...person, balance: (net.get(person.id) || 0) - (person.settledBalance || 0),
     transactions: confirmed.filter(t => t.split.paidBy === person.id || t.split.shares.some(s => s.id === person.id))
       .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
       .map(t => ({ date: t.date, merchant: t.merchant, total: t.amount, payer: name(t.split.paidBy),
@@ -38,7 +38,7 @@ export function createPeoplePdf(rows, people, profileName = '', now = new Date()
   text('People & balances', 25);
   text(`${profileName ? `Prepared for ${profileName} | ` : ''}Generated ${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' }).format(now)}`, 9, '#656570');
   doc.moveDown();
-  text('All-time confirmed splits. Amounts are in INR. Balances are between you and each person; debts between other people are not included. Transactions may appear under more than one person.', 10, '#656570');
+  text('Transactions include all confirmed splits. Balances start after the most recent settlement with each person. Amounts are in INR; debts between other people are not included.', 10, '#656570');
   doc.moveDown();
   const receivable = report.reduce((sum, p) => sum + Math.max(0, p.balance), 0);
   const payable = report.reduce((sum, p) => sum + Math.max(0, -p.balance), 0);

@@ -10,6 +10,7 @@ test('profile, people, cards and splits persist in SQLite and pending splits are
   const script = `
     import assert from 'node:assert/strict';
     import { featureRequest, listTransactions } from ${JSON.stringify(new URL('../src/features.js', import.meta.url).href)};
+    import { balances } from ${JSON.stringify(new URL('../public/splits.js', import.meta.url).href)};
     import { db, userId } from ${JSON.stringify(new URL('../src/store.js', import.meta.url).href)};
     import { addManualTransaction } from ${JSON.stringify(new URL('../src/manual.js', import.meta.url).href)};
     const manualInput = { date: '2020-01-01', time: '12:30', merchant: 'Lunch', amount: 12550, type: 'expense', category: 'Food & dining', bank: 'Cash' };
@@ -36,6 +37,13 @@ test('profile, people, cards and splits persist in SQLite and pending splits are
     assert.equal(listTransactions()[0].split.shares[0].amount, 51);
     assert.equal(listTransactions()[0].time, '16:52:46');
     assert.throws(() => featureRequest('/api/splits/test', 'POST', { ...input, paidBy: 'unknown' }));
+    const settled = featureRequest('/api/people/' + person.id + '/settle', 'POST', {});
+    assert.equal(settled.settledBalance, 50);
+    assert.equal(featureRequest('/api/people', 'GET')[0].settledBalance, 50);
+    db.prepare("INSERT INTO transactions (user_id,id,date,merchant,amount,type,account,category,review,note,time) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(userId(), 'test-new', '2026-09-10', 'Dinner', 200, 'expense', '1234', 'Food & dining', 0, '', '');
+    featureRequest('/api/splits/test-new', 'POST', input);
+    const currentPeople = featureRequest('/api/people', 'GET');
+    assert.equal(balances(listTransactions(), currentPeople).get(person.id) - currentPeople[0].settledBalance, 100);
     db.close();
   `;
   try {
@@ -44,15 +52,19 @@ test('profile, people, cards and splits persist in SQLite and pending splits are
     const restart = spawnSync(process.execPath, ['--input-type=module', '-e', `
       import assert from 'node:assert/strict';
       import { featureRequest, listTransactions } from ${JSON.stringify(new URL('../src/features.js', import.meta.url).href)};
+      import { balances } from ${JSON.stringify(new URL('../public/splits.js', import.meta.url).href)};
       import { db } from ${JSON.stringify(new URL('../src/store.js', import.meta.url).href)};
-      assert.equal(listTransactions()[0].split.shares[0].amount, 51);
+      assert.equal(listTransactions().find(transaction => transaction.id === 'test').split.shares[0].amount, 51);
       assert.equal(featureRequest('/api/profile', 'GET').name, 'Test User');
       const cards = await featureRequest('/api/cards', 'GET');
       assert.equal(cards[0].variant, 'Test Card');
       await featureRequest('/api/cards/' + cards[0].id, 'DELETE', {});
       assert.equal((await featureRequest('/api/cards', 'GET')).length, 0);
+      const people = featureRequest('/api/people', 'GET');
+      assert.equal(people[0].settledBalance, 50);
+      assert.equal(balances(listTransactions(), people).get(people[0].id) - people[0].settledBalance, 100);
       featureRequest('/api/splits/test', 'DELETE', {});
-      assert.equal(listTransactions()[0].split, null);
+      assert.equal(listTransactions().find(transaction => transaction.id === 'test').split, null);
       db.close();
     `], { cwd: directory, encoding: 'utf8' });
     assert.equal(restart.status, 0, restart.stderr);
