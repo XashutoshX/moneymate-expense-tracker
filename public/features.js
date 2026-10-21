@@ -45,6 +45,22 @@ export function setupFeatures(api, reload, statementImporter) {
     finally { button.disabled = false; }
   };
   function personName(id) { return id === 'me' ? 'You' : people.find(p => p.id === id)?.name || 'Unknown person'; }
+  function personBalance(person) {
+    return (balances(transactions, people).get(person.id) || 0) - (person.settledBalance || 0);
+  }
+  function renderPeopleCards() {
+    const container = $('#people-cards');
+    $('#people-empty').hidden = people.length > 0;
+    container.replaceChildren(...people.map((person, index) => {
+      const value = personBalance(person), card = node('article', '', 'balance-card');
+      const avatar = node('div', person.name.trim().slice(0, 1).toUpperCase(), `balance-card-avatar avatar-tone-${index % 4}`); avatar.setAttribute('aria-hidden', 'true');
+      const name = node('h3', person.name, 'balance-card-name');
+      const label = node('p', value > 0 ? 'Owes you' : value < 0 ? 'You owe' : 'Settled', 'balance-card-label');
+      const amount = node('strong', `${value > 0 ? '+' : value < 0 ? '-' : ''}${money(Math.abs(value))}`, `balance-card-amount ${value > 0 ? 'receivable' : value < 0 ? 'owed' : 'settled'}`);
+      const detail = node('small', value ? 'Since the last settlement' : 'No outstanding balance', 'balance-card-detail');
+      card.append(avatar, name, label, amount, detail); return card;
+    }));
+  }
   function renderAlertSenders() {
     $('#alert-senders-list').replaceChildren(...alertSenders.map(sender => {
       const item = node('div', '', 'alert-sender-item');
@@ -83,6 +99,7 @@ export function setupFeatures(api, reload, statementImporter) {
       return item;
     }));
     if (!people.length) $('#people-list').append(node('p', 'Add someone to split an expense.', 'muted'));
+    renderPeopleCards();
   }
   function renderCards() {
     const year = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric' }).format(new Date());
@@ -168,7 +185,7 @@ export function setupFeatures(api, reload, statementImporter) {
     profile = {}; people = []; cards = []; alertSenders = []; transactions = [];
     $('#profile-name').textContent = 'Your profile'; $('#profile-email').textContent = 'Connect Gmail';
     $('#profile-photo').hidden = true; $('#profile-photo').removeAttribute('src'); $('#profile-initial').hidden = false; $('#profile-initial').textContent = 'Y';
-    $('#people-list').replaceChildren(); $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
+    $('#people-list').replaceChildren(); $('#people-cards').replaceChildren(); $('#people-empty').hidden = false; $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
     $('#people-status').textContent = '';
     $('#alert-senders-list').replaceChildren(); $('#alert-senders-status').textContent = '';
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
@@ -188,6 +205,14 @@ export function setupFeatures(api, reload, statementImporter) {
     const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
     try { const person = await api('/api/people', 'POST', { name: $('#person-name').value }); people = [...people, person]; $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
     catch (error) { $('#person-error').textContent = error.message; }
+    finally { submit.disabled = false; }
+  };
+  $('#people-tab-add').onclick = () => { $('#people-tab-form').hidden = !$('#people-tab-form').hidden; if (!$('#people-tab-form').hidden) $('#people-tab-person-name').focus({ preventScroll: true }); };
+  $('#people-tab-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget, submit = form.querySelector('button[type="submit"]'); submit.disabled = true;
+    try { const person = await api('/api/people', 'POST', { name: $('#people-tab-person-name').value }); people = [...people, person]; form.reset(); $('#people-tab-error').textContent = ''; $('#people-tab-form').hidden = true; renderPeople(); renderInsights(); sneezy.render(); }
+    catch (error) { $('#people-tab-error').textContent = error.message; }
     finally { submit.disabled = false; }
   };
   $('#alert-sender-form').onsubmit = async event => {
@@ -295,8 +320,8 @@ export function setupFeatures(api, reload, statementImporter) {
     }
     catch (error) { $('#split-error').textContent = error.message; }
   };
-  for (const view of ['ledger', 'deep', 'cards', 'sneezy']) $('#' + view + '-tab').onclick = () => {
-    for (const name of ['ledger', 'deep', 'cards', 'sneezy']) {
+  for (const view of ['ledger', 'people', 'deep', 'cards', 'sneezy']) $('#' + view + '-tab').onclick = () => {
+    for (const name of ['ledger', 'people', 'deep', 'cards', 'sneezy']) {
       $('#' + name + '-panel').hidden = name !== view;
       $('#' + name + '-tab').setAttribute('aria-pressed', String(name === view));
     }
