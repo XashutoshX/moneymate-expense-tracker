@@ -37,6 +37,17 @@ function cardList(value) {
   try { const cards = JSON.parse(value || '[]'); return Array.isArray(cards) ? cards : []; }
   catch { return []; }
 }
+function alertSenderList(value) {
+  try {
+    const senders = JSON.parse(value || '[]');
+    if (!Array.isArray(senders)) return [];
+    return senders.filter(sender => sender && typeof sender.id === 'string' && typeof sender.email === 'string');
+  } catch { return []; }
+}
+function alertSenderEmail(value) {
+  const email = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : '';
+}
 function settlementMap(value) {
   try {
     const parsed = JSON.parse(value || '{}');
@@ -77,6 +88,23 @@ async function cardRequest(path, method, input) {
 export function featureRequest(path, method, input) {
   if (path === '/api/cards' || path.startsWith('/api/cards/')) return cardRequest(path, method, input);
   if (isPostgres) return featureRequestPostgres(path, method, input);
+  if (path === '/api/alert-senders' && method === 'GET') return alertSenderList(get('alertSenders'));
+  if (path === '/api/alert-senders' && method === 'POST') {
+    const email = alertSenderEmail(input.email);
+    if (!email) throw new Error('Enter a valid alert sender email address.');
+    const senders = alertSenderList(get('alertSenders'));
+    if (senders.some(sender => sender.email.toLowerCase() === email)) throw new Error('That alert sender is already saved.');
+    const sender = { id: randomUUID(), email };
+    set('alertSenders', JSON.stringify([...senders, sender]));
+    set('senderVersion', '');
+    return sender;
+  }
+  if (path.startsWith('/api/alert-senders/') && method === 'DELETE') {
+    const id = decodeURIComponent(path.slice('/api/alert-senders/'.length));
+    const senders = alertSenderList(get('alertSenders'));
+    set('alertSenders', JSON.stringify(senders.filter(sender => sender.id !== id)));
+    return { ok: true };
+  }
   if (path === '/api/profile' && method === 'GET') return {
     name: get('profileName') || '', photo: get('profilePhoto') || '', email: get('email') || '' };
   if (path === '/api/profile' && method === 'POST') {
@@ -119,6 +147,23 @@ export function featureRequest(path, method, input) {
 }
 
 async function featureRequestPostgres(path, method, input) {
+  if (path === '/api/alert-senders' && method === 'GET') return alertSenderList(await get('alertSenders'));
+  if (path === '/api/alert-senders' && method === 'POST') {
+    const email = alertSenderEmail(input.email);
+    if (!email) throw new Error('Enter a valid alert sender email address.');
+    const senders = alertSenderList(await get('alertSenders'));
+    if (senders.some(sender => sender.email.toLowerCase() === email)) throw new Error('That alert sender is already saved.');
+    const sender = { id: randomUUID(), email };
+    await set('alertSenders', JSON.stringify([...senders, sender]));
+    await set('senderVersion', '');
+    return sender;
+  }
+  if (path.startsWith('/api/alert-senders/') && method === 'DELETE') {
+    const id = decodeURIComponent(path.slice('/api/alert-senders/'.length));
+    const senders = alertSenderList(await get('alertSenders'));
+    await set('alertSenders', JSON.stringify(senders.filter(sender => sender.id !== id)));
+    return { ok: true };
+  }
   if (path === '/api/profile' && method === 'GET') return { name: await get('profileName') || '', photo: await get('profilePhoto') || '', email: await get('email') || '' };
   if (path === '/api/profile' && method === 'POST') {
     if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 80) throw new Error('Enter a name up to 80 characters.');

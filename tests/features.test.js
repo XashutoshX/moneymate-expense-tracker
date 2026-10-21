@@ -22,6 +22,10 @@ test('profile, people, cards and splits persist in SQLite and pending splits are
     assert.throws(() => addManualTransaction({ ...manualInput, bank: 'Invalid' }));
     featureRequest('/api/profile', 'POST', { name: 'Test User', photo: '' });
     assert.equal(featureRequest('/api/profile', 'GET').name, 'Test User');
+    const sender = featureRequest('/api/alert-senders', 'POST', { email: 'donotreply@bobcard.in' });
+    assert.equal(featureRequest('/api/alert-senders', 'GET')[0].email, sender.email);
+    assert.throws(() => featureRequest('/api/alert-senders', 'POST', { email: 'not-an-email' }), /valid alert sender/);
+    assert.throws(() => featureRequest('/api/alert-senders', 'POST', { email: 'DONOTREPLY@BOBCARD.IN' }), /already saved/);
     const card = await featureRequest('/api/cards', 'POST', { bank: 'HDFC', variant: 'Test Card', cardholderName: 'Test User', lastFour: '1234', creditLimit: 50000000,
       rewardBalance: 1200, pointsPerUnit: 4, spendUnit: 15000, pointValue: 50, milestoneSpend: 40000000, milestoneValue: 1000000 });
     assert.equal((await featureRequest('/api/cards', 'GET'))[0].id, card.id);
@@ -56,10 +60,14 @@ test('profile, people, cards and splits persist in SQLite and pending splits are
       import { db } from ${JSON.stringify(new URL('../src/store.js', import.meta.url).href)};
       assert.equal(listTransactions().find(transaction => transaction.id === 'test').split.shares[0].amount, 51);
       assert.equal(featureRequest('/api/profile', 'GET').name, 'Test User');
+      const senders = featureRequest('/api/alert-senders', 'GET');
+      assert.equal(senders[0].email, 'donotreply@bobcard.in');
       const cards = await featureRequest('/api/cards', 'GET');
       assert.equal(cards[0].variant, 'Test Card');
       await featureRequest('/api/cards/' + cards[0].id, 'DELETE', {});
       assert.equal((await featureRequest('/api/cards', 'GET')).length, 0);
+      featureRequest('/api/alert-senders/' + senders[0].id, 'DELETE', {});
+      assert.equal(featureRequest('/api/alert-senders', 'GET').length, 0);
       const people = featureRequest('/api/people', 'GET');
       assert.equal(people[0].settledBalance, 50);
       assert.equal(balances(listTransactions(), people).get(people[0].id) - people[0].settledBalance, 100);

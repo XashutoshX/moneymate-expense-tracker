@@ -95,7 +95,7 @@ export async function handler(req, res) {
       }
       return json(res, { ...result, name: statement.name, bank: 'HDFC', account: card.lastFour });
     }
-    if (['/api/profile', '/api/people', '/api/cards'].includes(url.pathname) || url.pathname.startsWith('/api/people/') || url.pathname.startsWith('/api/splits/') || url.pathname.startsWith('/api/cards/')) {
+    if (['/api/profile', '/api/people', '/api/cards', '/api/alert-senders'].includes(url.pathname) || url.pathname.startsWith('/api/people/') || url.pathname.startsWith('/api/splits/') || url.pathname.startsWith('/api/cards/') || url.pathname.startsWith('/api/alert-senders/')) {
       const result = await featureRequest(url.pathname, req.method, req.method === 'POST' ? await body(req) : {});
       if (result !== undefined) return json(res, result);
     }

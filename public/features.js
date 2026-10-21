@@ -21,7 +21,7 @@ export function setupFeatures(api, reload, statementImporter) {
   window.addEventListener('resize', updateScrollButtons);
   new ResizeObserver(updateScrollButtons).observe(tableScroll);
   new MutationObserver(updateScrollButtons).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
-  let profile = {}, people = [], cards = [], transactions = [], activeSplit, photo = '', splitPosition;
+  let profile = {}, people = [], cards = [], alertSenders = [], transactions = [], activeSplit, photo = '', splitPosition;
   const sneezy = setupSneezy(() => transactions, (month, search) => {
     $('#date-from').value = month + '-01';
     const end = new Date(month + '-01T00:00:00Z'); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0);
@@ -45,6 +45,20 @@ export function setupFeatures(api, reload, statementImporter) {
     finally { button.disabled = false; }
   };
   function personName(id) { return id === 'me' ? 'You' : people.find(p => p.id === id)?.name || 'Unknown person'; }
+  function renderAlertSenders() {
+    $('#alert-senders-list').replaceChildren(...alertSenders.map(sender => {
+      const item = node('div', '', 'alert-sender-item');
+      const email = node('span', sender.email, 'alert-sender-email');
+      const remove = node('button', 'Remove', 'secondary'); remove.type = 'button'; remove.setAttribute('aria-label', `Remove ${sender.email}`);
+      remove.onclick = async () => {
+        remove.disabled = true;
+        try { await api(`/api/alert-senders/${encodeURIComponent(sender.id)}`, 'DELETE'); alertSenders = alertSenders.filter(item => item.id !== sender.id); renderAlertSenders(); $('#alert-senders-status').textContent = 'Alert sender removed.'; }
+        catch (error) { remove.disabled = false; $('#alert-senders-status').textContent = error.message; }
+      };
+      item.append(email, remove); return item;
+    }));
+    if (!alertSenders.length) $('#alert-senders-list').append(node('p', 'No alert senders saved yet.', 'muted'));
+  }
   function renderPeople() {
     const net = balances(transactions, people);
     $('#people-list').replaceChildren(...people.map(person => {
@@ -137,12 +151,13 @@ export function setupFeatures(api, reload, statementImporter) {
   }
   async function refresh(rows) {
     transactions = rows;
-    [profile, people, cards] = await Promise.all([api('/api/profile'), api('/api/people'), api('/api/cards')]);
+    [profile, people, cards, alertSenders] = await Promise.all([api('/api/profile'), api('/api/people'), api('/api/cards'), api('/api/alert-senders')]);
     $('#profile-name').textContent = profile.name || 'Your profile';
     $('#profile-email').textContent = profile.email || 'Connect Gmail';
     $('#profile-photo').hidden = !profile.photo; $('#profile-initial').hidden = Boolean(profile.photo);
     if (profile.photo) $('#profile-photo').src = profile.photo; else $('#profile-photo').removeAttribute('src');
     $('#profile-initial').textContent = (profile.name || 'You').slice(0, 1).toUpperCase();
+    renderAlertSenders();
     renderPeople();
     renderCards();
     renderInsights();
@@ -150,11 +165,12 @@ export function setupFeatures(api, reload, statementImporter) {
     updateScrollButtons();
   }
   function clear() {
-    profile = {}; people = []; cards = []; transactions = [];
+    profile = {}; people = []; cards = []; alertSenders = []; transactions = [];
     $('#profile-name').textContent = 'Your profile'; $('#profile-email').textContent = 'Connect Gmail';
     $('#profile-photo').hidden = true; $('#profile-photo').removeAttribute('src'); $('#profile-initial').hidden = false; $('#profile-initial').textContent = 'Y';
     $('#people-list').replaceChildren(); $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
     $('#people-status').textContent = '';
+    $('#alert-senders-list').replaceChildren(); $('#alert-senders-status').textContent = '';
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
     $('#credit-card-list').replaceChildren(); $('#card-recommendation').hidden = true; $('#cards-empty').hidden = false;
     updateScrollButtons();
@@ -172,6 +188,15 @@ export function setupFeatures(api, reload, statementImporter) {
     const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
     try { const person = await api('/api/people', 'POST', { name: $('#person-name').value }); people = [...people, person]; $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
     catch (error) { $('#person-error').textContent = error.message; }
+    finally { submit.disabled = false; }
+  };
+  $('#alert-sender-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget, submit = form.querySelector('button[type="submit"]'); submit.disabled = true;
+    try {
+      const sender = await api('/api/alert-senders', 'POST', { email: $('#alert-sender-email').value });
+      alertSenders = [...alertSenders, sender]; form.reset(); $('#alert-sender-error').textContent = ''; $('#alert-senders-status').textContent = 'Alert sender saved.'; renderAlertSenders();
+    } catch (error) { $('#alert-sender-error').textContent = error.message; }
     finally { submit.disabled = false; }
   };
   $('#add-card').onclick = () => { $('#card-form').reset(); $('#card-error').textContent = ''; $('#card-editor').showModal(); };

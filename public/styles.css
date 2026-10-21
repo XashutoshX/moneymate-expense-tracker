@@ -65,7 +65,68 @@ dialog{color:var(--ink);background:var(--surface);border:1px solid var(--line);b
 .card-heading-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.credit-card-heading .card-heading-actions button:first-child{color:var(--accent)}
 .person-balance-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.person-balance-heading button{min-height:28px;padding:5px 8px;font-size:11px}
 
+.alert-senders-card{margin-top:28px;padding-top:28px;border-top:1px solid #34435f}.sidebar-section-icon{font-size:18px;color:#9eb0cf}.alert-senders-card>.muted{font-size:12px;margin:12px 0 18px}.alert-senders-card form label{display:grid;gap:8px;font-size:12px}.alert-senders-card form input{width:100%;font-size:12px}.alert-senders-card form button{width:100%;margin-top:8px;font-size:12px}.alert-senders-card form button .material-symbols-outlined{font-size:17px;width:17px}.alert-sender-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #34435f}.alert-sender-email{min-width:0;overflow-wrap:anywhere;font-size:12px;color:#f7f9fc}.alert-sender-item button{min-height:30px;padding:5px 8px;flex:0 0 auto;font-size:11px}.alert-senders-card p[role=alert]{color:#ff9c91;font-size:12px;margin:8px 0 0}.alert-senders-card p[role=status]{font-size:11px;margin:10px 0 0}
+
 
 /* Public legal pages and header links. */
 .app-header{flex-wrap:wrap}.legal-nav{display:flex;flex-wrap:wrap;gap:12px 24px;margin-left:auto}.legal-nav a{font-size:14px;color:var(--ink);text-underline-offset:4px}.legal-nav a:hover,.legal-nav a[aria-current=page]{color:var(--accent)}.legal-nav a:focus-visible,.legal-page a:focus-visible{outline:2px solid var(--accent);outline-offset:4px}.legal-header{max-width:1000px;margin:0 auto;padding:28px 24px;display:flex;align-items:center;flex-wrap:wrap;gap:20px;border-bottom:1px solid var(--line)}.legal-brand{font-size:26px;font-weight:600;color:var(--ink);text-decoration:none}.legal-content{max-width:800px;margin:32px auto;padding:32px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);line-height:1.8}.legal-content h1{font-size:32px}.legal-content h2{font-size:20px;margin:28px 0 10px}.legal-content p{margin:12px 0}.legal-content a{color:var(--accent)}
 @media(max-width:760px){.app-header .legal-nav{width:100%;margin-left:0}.legal-header{padding:22px 16px}.legal-header .legal-nav{margin-left:0}.legal-content{margin:20px 16px;padding:22px}.legal-content h1{font-size:28px}}
+
+/* UI/UX Pro Max alignment: focused fintech dashboard with clear hierarchy, calm surfaces, and stable interactions. */
+:root{--canvas:#f5f7fb;--surface:#ffffff;--ink:#14213d;--muted:#5f6b7a;--line:#e3e8f0;--accent:#4f46e5;--accent-soft:#eef2ff;--positive:#15803d;--danger:#b42318;--radius:14px;font-family:Manrope,Inter,'Segoe UI',sans-serif;color:var(--ink);background:var(--canvas)}
+body{background:var(--canvas)}
+button,.button{min-height:44px;border-radius:9px;font-weight:700;letter-spacing:-.1px;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,opacity .15s ease}
+button:hover,.button:hover{box-shadow:0 5px 14px #18243b1a}
+button:active,.button:active{box-shadow:0 2px 6px #18243b1a;opacity:.92}
+.secondary{background:var(--surface);border-color:#cfd7e4;color:var(--ink)}
+.secondary:hover{background:#f8faff;border-color:#aebbd0}
+input,select{background:var(--surface);border-color:#cfd7e4;border-radius:9px}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px #4f46e526;outline:0}
+:focus-visible{outline:3px solid #4f46e566;outline-offset:3px}
+.app-layout{max-width:1680px}
+.sidebar{background:#17233b;border-right:1px solid #0f192c;color:#f7f9fc}
+.sidebar .muted,.sidebar .profile-card p{color:#aebbd0}
+.profile-card{border-bottom-color:#34435f}
+.profile-card h2,.people-heading h2{color:#fff}
+.avatar{background:#e5e7ff;color:#3730a3}
+.profile-card button,.sidebar .secondary{background:transparent;border-color:#40506d;color:#f7f9fc}
+.profile-card button:hover,.sidebar .secondary:hover{background:#223250;border-color:#617293}
+.person-balance{border-bottom-color:#34435f}
+.receivable{color:#72d59a}.owed{color:#ff9c91}
+.app-layout main{padding:42px clamp(24px,4vw,64px)}
+.app-header{padding-bottom:24px;border-bottom:1px solid var(--line)}
+.app-name{font-weight:800;letter-spacing:-1.8px}
+.app-name .brand-icon{background:var(--accent);color:#fff;box-shadow:0 8px 16px #4f46e52e}
+.app-description{color:var(--muted)}
+.legal-nav a{color:var(--muted);font-weight:600;text-decoration:none}
+.legal-nav a:hover{color:var(--accent)}
+.connection,.transactions,.analytics-card,.heatmap-panel,.credit-card{box-shadow:0 10px 28px #1b2a4410}
+.connection{border-color:var(--line);padding:22px 24px}
+.connection h2{font-weight:800}
+.connection #connect{background:var(--ink)}
+.page-tabs{gap:8px;margin:28px 0 28px;padding:5px;border:1px solid var(--line);border-radius:12px;background:#eaf0f8;width:max-content;max-width:100%}
+.page-tabs button{min-height:40px;padding:9px 14px;border:0!important;border-radius:8px;color:var(--muted)!important;font-weight:700}
+.page-tabs button[aria-pressed=true]{background:var(--surface)!important;color:var(--accent)!important;box-shadow:0 2px 7px #18243b14}
+.toolbar{margin:24px 0 20px}
+.toolbar h2,.transactions h2{font-weight:800}
+.cards{gap:18px}
+.cards>article,.cards>.heatmap-panel{border-color:var(--line);box-shadow:0 10px 28px #1b2a4410}
+.cards>article:first-child{background:var(--ink);border-color:var(--ink);box-shadow:0 12px 28px #14213d26}
+.cards>article:first-child p,.cards>article:first-child small{color:#b9c5d8}
+.cards strong{font-weight:800;letter-spacing:-1.8px}
+.transactions{border-color:var(--line);padding-bottom:20px}
+.transactions>.muted{color:#687588}
+th{background:#f0f3f8;color:#637086;padding:15px 12px}
+td{border-bottom-color:#edf0f4;padding:18px 12px}
+tbody tr:hover{background:#f8faff}
+.status-pill{border-radius:999px;background:#eef2f6;color:#536176;padding:5px 10px;font-weight:700}
+.status-pill.pending{background:#fff0ed;color:var(--danger)}
+.status-pill.automatic{background:var(--accent-soft);color:var(--accent)}
+.analytics-kpis article{box-shadow:0 10px 24px #1b2a4414}
+.analytics-card{border-color:var(--line)}
+dialog{border-color:var(--line);box-shadow:0 28px 90px #101a2d33}
+dialog h2{font-weight:800}
+dialog .actions{border-top-color:var(--line)}
+footer{color:#748196}
+@media(max-width:1050px){.app-layout main{padding:30px 28px}}
+@media(max-width:760px){.app-layout main{padding:22px 16px}.app-header{padding-bottom:20px}.page-tabs{width:100%;overflow:auto}.page-tabs button{flex:0 0 auto}.connection,.transactions,.analytics-card,.heatmap-panel{box-shadow:0 6px 18px #1b2a440d}}

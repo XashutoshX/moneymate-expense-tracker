@@ -1,10 +1,15 @@
 import { parseHdfc } from './parser.js';
 
-export function bankFromSender(sender) {
-  const address = (sender.match(/<([^<>]+)>/)?.[1] || sender).trim().toLowerCase();
+export function senderAddress(sender) {
+  return (sender.match(/<([^<>]+)>/)?.[1] || sender).trim().toLowerCase();
+}
+
+export function bankFromSender(sender, additionalSenders = []) {
+  const address = senderAddress(sender);
   if (/^[^\s@]+@(?:[a-z0-9-]+\.)*icici\.bank\.in$/.test(address)) return 'ICICI';
   if (/^[^\s@]+@(?:[a-z0-9-]+\.)*hdfcbank\.(?:net|com)$/.test(address) || address === 'alerts@hdfcbank.bank.in') return 'HDFC';
   if (address === 'cbsalerts.sbi@alerts.sbi.bank.in') return 'SBI';
+  if (additionalSenders.some(value => (typeof value === 'string' ? value : value?.email || '').toLowerCase() === address)) return 'Other';
   return null;
 }
 
@@ -16,6 +21,11 @@ export function parseBank(bank, text, receivedAt) {
     transaction.autoEligible = false;
     if (transaction.merchant === 'HDFC transaction') transaction.merchant = `${bank} transaction`;
     transaction.note = `${bank} alert: verify the amount, merchant, date and type against the source email.`;
+  }
+  if (bank === 'Other') {
+    transaction.autoEligible = false;
+    if (transaction.merchant === 'HDFC transaction') transaction.merchant = 'Other bank transaction';
+    transaction.note = 'Saved alert sender: verify the amount, merchant, date and type against the source email.';
   }
   return transaction;
 }

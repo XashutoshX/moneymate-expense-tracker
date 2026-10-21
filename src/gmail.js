@@ -114,7 +114,13 @@ export async function sync() {
   const backfillTime = await get('timeVersion') !== '1';
   const lastSync = await get('senderVersion') === '4' && !reparse && !backfillTime ? Number(await get('lastSync')) : 0;
   const after = Math.floor((lastSync || startedAt - 90 * 86400000) / 1000) - 2 * 86400;
-  const query = `{from:hdfcbank.net from:hdfcbank.com from:alerts@hdfcbank.bank.in from:icici.bank.in from:credit_cards@icici.bank.in from:cbsalerts.sbi@alerts.sbi.bank.in} after:${after} {debited credited spent purchase paid withdrawn refund reversed}`;
+  let configuredSenders = [];
+  try {
+    const saved = JSON.parse(await get('alertSenders') || '[]');
+    configuredSenders = Array.isArray(saved) ? saved.map(sender => typeof sender === 'string' ? sender : sender?.email).filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')).map(email => email.toLowerCase()) : [];
+  } catch {}
+  const senderQueries = ['from:hdfcbank.net', 'from:hdfcbank.com', 'from:alerts@hdfcbank.bank.in', 'from:icici.bank.in', 'from:credit_cards@icici.bank.in', 'from:cbsalerts.sbi@alerts.sbi.bank.in', ...configuredSenders.map(email => `from:${email}`)];
+  const query = `{${[...new Set(senderQueries)].join(' ')}} after:${after} {debited credited spent purchase paid withdrawn refund reversed}`;
   let pageToken = '', imported = 0, skipped = 0;
   do {
     const page = await gmail('messages?' + new URLSearchParams({ q: query, maxResults: '100', ...(pageToken ? { pageToken } : {}) }));
@@ -126,7 +132,7 @@ export async function sync() {
       // The user may delete this entry while the Gmail request is in flight.
       if (await one('SELECT id FROM deleted_transactions WHERE user_id=? AND id=?', [userId(), id])) continue;
       const sender = message.payload.headers?.find(h => h.name.toLowerCase() === 'from')?.value || '';
-      const bank = bankFromSender(sender);
+      const bank = bankFromSender(sender, configuredSenders);
       const parsed = bank ? parseBank(bank, messageText(message.payload), Number(message.internalDate)) : null;
       const transaction = parsed ? classify(parsed, await get('autoReview') !== 'false') : null;
       if (transaction) {

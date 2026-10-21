@@ -9,6 +9,8 @@ test('recognizes bank sender domains without matching lookalikes', () => {
   assert.equal(bankFromSender('alerts@hdfcbank.bank.in'), 'HDFC');
   assert.equal(bankFromSender('cbsalerts.sbi@alerts.sbi.bank.in'), 'SBI');
   assert.equal(bankFromSender('cbsalerts.sbi@alerts.sbi.bank.in.example.com'), null);
+  assert.equal(bankFromSender('BOB Card <donotreply@bobcard.in>', ['donotreply@bobcard.in']), 'Other');
+  assert.equal(bankFromSender('donotreply@bobcard.in'), null);
 });
 test('ICICI debit and credit parsing stays pending verification', () => {
   const debit = parseBank('ICICI', 'Rs.100.00 debited from account ending 1234 on 10-09-26.', Date.now());
@@ -24,4 +26,11 @@ test('SBI debit parsing stays pending verification', () => {
   assert.equal(transaction.type, 'expense');
   assert.equal(transaction.merchant, 'SBI transaction');
   assert.equal(transaction.autoEligible, false);
+});
+
+test('saved alert sender uses the generic parser and stays pending verification', () => {
+  const transaction = parseBank('Other', 'Rs.100.00 debited from account ending 1234 on 10-09-26.', Date.now());
+  assert.equal(transaction.type, 'expense');
+  assert.equal(transaction.autoEligible, false);
+  assert.match(transaction.note, /Saved alert sender/);
 });
