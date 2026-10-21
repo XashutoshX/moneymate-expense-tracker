@@ -77,7 +77,7 @@ export function setupFeatures(api, reload, statementImporter) {
   }
   function renderPeople() {
     const net = balances(transactions, people);
-    $('#people-list').replaceChildren(...people.map(person => {
+    people.forEach(person => {
       const item = node('div', '', 'person-balance');
       const value = (net.get(person.id) || 0) - (person.settledBalance || 0);
       const heading = node('div', '', 'person-balance-heading'), settle = node('button', value ? 'Settle up' : 'Settled', 'secondary');
@@ -89,16 +89,14 @@ export function setupFeatures(api, reload, statementImporter) {
         person.settledBalance = net.get(person.id) || 0; renderPeople();
         try {
           const result = await api(`/api/people/${person.id}/settle`, 'POST', {});
-          person.settledBalance = result.settledBalance; $('#people-status').textContent = `${person.name} is settled up. New splits will start from ₹0.`; renderPeople();
+          person.settledBalance = result.settledBalance; $('#people-tab-status').textContent = `${person.name} is settled up. New splits will start from ₹0.`; renderPeople();
         } catch (error) {
-          person.settledBalance = previous; $('#people-status').textContent = error.message; renderPeople();
+          person.settledBalance = previous; $('#people-tab-status').textContent = error.message; renderPeople();
         }
       };
       heading.append(node('strong', person.name), settle);
       item.append(heading, node('span', value > 0 ? `Owes you ${money(value)}` : value < 0 ? `You owe ${money(-value)}` : 'Settled / no balance', value < 0 ? 'owed' : 'receivable'));
-      return item;
-    }));
-    if (!people.length) $('#people-list').append(node('p', 'Add someone to split an expense.', 'muted'));
+    });
     renderPeopleCards();
   }
   function renderCards() {
@@ -185,8 +183,7 @@ export function setupFeatures(api, reload, statementImporter) {
     profile = {}; people = []; cards = []; alertSenders = []; transactions = [];
     $('#profile-name').textContent = 'Your profile'; $('#profile-email').textContent = 'Connect Gmail';
     $('#profile-photo').hidden = true; $('#profile-photo').removeAttribute('src'); $('#profile-initial').hidden = false; $('#profile-initial').textContent = 'Y';
-    $('#people-list').replaceChildren(); $('#people-cards').replaceChildren(); $('#people-empty').hidden = false; $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
-    $('#people-status').textContent = '';
+    $('#people-cards').replaceChildren(); $('#people-empty').hidden = false; $('#people-tab-status').textContent = ''; $('#export-people-status').textContent = ''; $('#insight-cards').replaceChildren(); $('#trend-chart').replaceChildren(); $('#trend-table').replaceChildren(); $('#category-breakdown').replaceChildren();
     $('#alert-senders-list').replaceChildren(); $('#alert-senders-status').textContent = '';
     $('#sneezy-summary').textContent = ''; $('#sneezy-saving').textContent = ''; $('#sneezy-actions').replaceChildren(); $('#sneezy-flags').replaceChildren();
     $('#credit-card-list').replaceChildren(); $('#card-recommendation').hidden = true; $('#cards-empty').hidden = false;
@@ -200,13 +197,6 @@ export function setupFeatures(api, reload, statementImporter) {
     sneezy.render();
     updateScrollButtons();
   }
-  $('#person-form').onsubmit = async event => {
-    event.preventDefault();
-    const submit = $('#person-form button[type="submit"]'); submit.disabled = true;
-    try { const person = await api('/api/people', 'POST', { name: $('#person-name').value }); people = [...people, person]; $('#person-name').value = ''; $('#person-error').textContent = ''; $('#person-form').hidden = true; $('#add-person-toggle').setAttribute('aria-expanded', 'false'); renderPeople(); renderInsights(); sneezy.render(); }
-    catch (error) { $('#person-error').textContent = error.message; }
-    finally { submit.disabled = false; }
-  };
   $('#people-tab-add').onclick = () => { $('#people-tab-form').hidden = !$('#people-tab-form').hidden; if (!$('#people-tab-form').hidden) $('#people-tab-person-name').focus({ preventScroll: true }); };
   $('#people-tab-form').onsubmit = async event => {
     event.preventDefault();
@@ -233,7 +223,6 @@ export function setupFeatures(api, reload, statementImporter) {
     catch (error) { $('#card-error').textContent = error.message; }
     finally { submit.disabled = false; }
   };
-  $('#add-person-toggle').onclick = () => { $('#person-form').hidden = !$('#person-form').hidden; $('#add-person-toggle').setAttribute('aria-expanded', String(!$('#person-form').hidden)); if (!$('#person-form').hidden) $('#person-name').focus({ preventScroll: true }); };
   $('#edit-profile').onclick = () => {
     $('#profile-form').elements.name.value = profile.name || ''; photo = profile.photo || '';
     $('#photo-file').value = ''; $('#profile-error').textContent = ''; $('#profile-editor').showModal();
