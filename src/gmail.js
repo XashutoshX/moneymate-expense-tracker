@@ -110,7 +110,7 @@ export async function findHdfcCardStatement(lastFour, variant) {
 export async function sync() {
   const startedAt = Date.now();
   // Backfill once when adding a sender so an existing sync cursor cannot hide older alerts.
-  const reparse = await get('parserVersion') !== '5';
+  const reparse = await get('parserVersion') !== '6';
   const backfillTime = await get('timeVersion') !== '1';
   const lastSync = await get('senderVersion') === '4' && !reparse && !backfillTime ? Number(await get('lastSync')) : 0;
   const after = Math.floor((lastSync || startedAt - 90 * 86400000) / 1000) - 2 * 86400;
@@ -154,7 +154,7 @@ export async function sync() {
   } while (pageToken);
   await set('lastSync', String(startedAt));
   await set('senderVersion', '4');
-  await set('parserVersion', '5');
+  await set('parserVersion', '6');
   await set('timeVersion', '1');
   return { imported, skipped };
 }
