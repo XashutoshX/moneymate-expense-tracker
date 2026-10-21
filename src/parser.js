@@ -2,7 +2,8 @@
 export function parseHdfc(text, receivedAt) {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (/\b(OTP|one.time password|payment due|minimum amount due|statement ready)\b/i.test(clean)) return null;
-  const debit = /\b(debited|spent|purchase|paid|withdrawn)\b/i.test(clean);
+  const transactionConfirmation = clean.match(/\bfor a transaction of\s+(?:INR|Rs\.?|â‚¹)\s*[\d,]+(?:\.\d{1,2})?\s+at\s+(.+?)\s+on\s+\d{1,2}-\d{1,2}-(?:\d{4}|\d{2})\b/i);
+  const debit = /\b(debited|spent|purchase|paid|withdrawn)\b/i.test(clean) || Boolean(transactionConfirmation);
   const credit = /\b(credited|refund|reversed)\b/i.test(clean);
   if (!debit && !credit) return null;
   const amounts = [...clean.matchAll(/(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d{1,2})?)/gi)];
@@ -10,7 +11,8 @@ export function parseHdfc(text, receivedAt) {
   const [whole, fraction = ''] = (first || '0').replaceAll(',', '').split('.');
   const amount = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
   const upi = clean.match(/\btowards\s+VPA\s+([^\s()]+)(?:\s+\(([^)]+)\))?\s+on\s+\d{1,2}-\d{1,2}-(?:\d{4}|\d{2})\b/i);
-  const merchant = (upi?.[2] || upi?.[1])?.trim()
+  const merchant = transactionConfirmation?.[1]?.trim()
+    || (upi?.[2] || upi?.[1])?.trim()
     || clean.match(/\btowards\s+(.{1,100}?)\s+on\s+\d{1,2}\s+[a-z]{3}/i)?.[1]?.trim()
     || clean.match(/(?:\bat\b|\bto\b)\s+([A-Za-z][A-Za-z0-9 *.@&_-]{2,55}?)(?=\s+(?:on|via|using|from|ref|for)\b|[.;]|$)/i)?.[1]?.trim() || 'HDFC transaction';
   const account = clean.match(/(?:ending|[xX*]{2,})\s*(\d{4})\b/)?.[1] || '';

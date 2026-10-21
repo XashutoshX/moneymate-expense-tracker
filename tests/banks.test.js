@@ -34,3 +34,13 @@ test('saved alert sender uses the generic parser and stays pending verification'
   assert.equal(transaction.autoEligible, false);
   assert.match(transaction.note, /Saved alert sender/);
 });
+
+test('BOBCARD transaction confirmation parses merchant, amount, date and card ending', () => {
+  const transaction = parseBank('Other', 'Dear Customer, thank you for using your BOBCARD **7137 for a transaction of INR 150.00 at upi-namaste btm new on 21-10-2026. Following this transaction, the available balance on your card is Rs 299,515.00.', Date.now());
+  assert.equal(transaction.amount, 15000);
+  assert.equal(transaction.type, 'expense');
+  assert.equal(transaction.merchant, 'upi-namaste btm new');
+  assert.equal(transaction.date, '2026-10-21');
+  assert.equal(transaction.account, '7137');
+  assert.equal(transaction.review, 1);
+});
