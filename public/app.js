@@ -108,7 +108,6 @@ function render() {
   const reviewCount = monthly.filter(t => t.review).length;
   $('#review').textContent = reviewCount; $('#review-count').textContent = reviewCount;
   $('#clear-day-filter').hidden = !selectedHeatmapDate;
-  renderDashboardInsights(monthly);
   renderHeatmap();
   const visible = monthly.filter(t => {
     const matchesSearch = `${t.merchant} ${t.category} ${t.type}`.toLowerCase().includes(search);
@@ -149,17 +148,6 @@ function render() {
   }
   // Replace rows atomically: an empty table would collapse the document and clamp scrolling.
   $('#rows').replaceChildren(fragment);
-}
-function renderDashboardInsights(rows) {
-  const trend = $('#dashboard-trend'), categoriesPanel = $('#dashboard-categories');
-  if (!trend || !categoriesPanel) return;
-  const months = Array.from(new Set(rows.map(t => t.date.slice(0, 7)))).sort().slice(-6);
-  const values = months.map(month => rows.filter(t => !t.review && t.type === 'expense' && t.date.startsWith(month)).reduce((sum, t) => sum + t.amount, 0));
-  const max = Math.max(1, ...values);
-  trend.replaceChildren(...months.map((month, i) => { const item = document.createElement('div'); item.className = 'trend-bar'; item.title = `${month}: ${money(values[i])}`; const bar = document.createElement('span'); bar.style.height = `${Math.max(8, values[i] / max * 100)}%`; item.append(bar, document.createTextNode(month.slice(5))); return item; }));
-  const totals = new Map(); rows.filter(t => !t.review && t.type === 'expense').forEach(t => totals.set(t.category, (totals.get(t.category) || 0) + t.amount));
-  const top = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5), topMax = Math.max(1, ...top.map(([, value]) => value));
-  categoriesPanel.replaceChildren(...(top.length ? top.map(([name, value]) => { const row = document.createElement('div'); row.className = 'category-row'; const label = document.createElement('span'); label.textContent = name; const amount = document.createElement('strong'); amount.textContent = money(value); const bar = document.createElement('i'); bar.style.width = `${value / topMax * 100}%`; row.append(label, amount, bar); return row; }) : [Object.assign(document.createElement('p'), { textContent: 'No confirmed expenses in this range.', className: 'muted' })]));
 }
 function renderHeatmap() {
   const currentMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date());
