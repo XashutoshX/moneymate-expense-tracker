@@ -57,6 +57,8 @@ function previewCategory() {
 async function loadCategories() {
   const result = await api('/api/categories'); categories = result.categories;
   $('#category-select').replaceChildren(...categories.map(c => new Option(c.name, c.name)));
+  const categoryFilter = $('#category-filter');
+  categoryFilter.replaceChildren(new Option('All categories', ''), ...categories.map(c => new Option(c.name, c.name)));
   $('#category-icon').replaceChildren(...result.icons.map(icon => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-choice';
     button.dataset.icon = icon; button.setAttribute('aria-pressed', String(icon === selectedIcon));
@@ -97,14 +99,23 @@ function render() {
   const from = $('#date-from').value, to = $('#date-to').value, search = $('#search').value.toLowerCase();
   const invalid = from && to && from > to;
   $('#date-error').textContent = invalid ? 'The From date must be on or before the To date.' : '';
-  const bank = $('#bank-filter').value;
-  const monthly = transactions.filter(t => !invalid && (!bank || t.bank === bank) && (!from || t.date >= from) && (!to || t.date <= to));
-  setSummaryAmount('expense', monthly.filter(t => !t.review && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0));
-  setSummaryAmount('income', monthly.filter(t => !t.review && ['income', 'refund'].includes(t.type)).reduce((sum, t) => sum + t.amount, 0));
-  $('#review').textContent = monthly.filter(t => t.review).length;
+  const bank = $('#bank-filter').value, category = $('#category-filter').value, status = $('#status-filter').value, quickView = $('#quick-view').value;
+  const monthly = transactions.filter(t => !invalid && (!bank || t.bank === bank) && (!category || t.category === category) && (!from || t.date >= from) && (!to || t.date <= to));
+  const expenses = monthly.filter(t => !t.review && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const income = monthly.filter(t => !t.review && ['income', 'refund'].includes(t.type)).reduce((sum, t) => sum + t.amount, 0);
+  setSummaryAmount('expense', expenses); setSummaryAmount('income', income);
+  $('#net-flow').textContent = money(income - expenses); $('#net-flow').classList.toggle('negative', income < expenses);
+  const reviewCount = monthly.filter(t => t.review).length;
+  $('#review').textContent = reviewCount; $('#review-count').textContent = reviewCount;
   $('#clear-day-filter').hidden = !selectedHeatmapDate;
+  renderDashboardInsights(monthly);
   renderHeatmap();
-  const visible = monthly.filter(t => `${t.merchant} ${t.category} ${t.type}`.toLowerCase().includes(search));
+  const visible = monthly.filter(t => {
+    const matchesSearch = `${t.merchant} ${t.category} ${t.type}`.toLowerCase().includes(search);
+    const matchesQuick = quickView === 'all' || (quickView === 'review' ? t.review : quickView === 'income' ? ['income', 'refund'].includes(t.type) : quickView === 'transfer' ? ['transfer', 'repayment'].includes(t.type) : t.type === quickView);
+    const matchesStatus = !status || (status === 'review' ? t.review : status === 'automatic' ? !t.review && t.note.startsWith('Automatically confirmed') : !t.review);
+    return matchesSearch && matchesQuick && matchesStatus;
+  });
   const fragment = document.createDocumentFragment();
   $('#empty').hidden = visible.length > 0;
   if (!visible.length && transactions.length) $('#empty').textContent = invalid ? 'Choose a valid date range.' : 'No transactions match this date range or search.';
@@ -126,16 +137,29 @@ function render() {
     button.className = 'secondary'; button.textContent = t.review ? 'Review' : 'Edit';
     button.dataset.transactionId = t.id;
     button.onclick = () => edit(t); cell.append(button);
+    const more = document.createElement('details'); more.className = 'row-actions';
+    const summary = document.createElement('summary'); summary.textContent = 'More'; more.append(summary);
     if (t.type === 'expense') {
-      const split = document.createElement('button'); split.className = 'secondary split-button'; split.textContent = t.split ? 'Edit split' : 'Split';
+      const split = document.createElement('button'); split.className = 'secondary split-button'; split.textContent = 'Split transaction';
       split.disabled = Boolean(t.review); split.title = t.review ? 'Confirm the expense before splitting' : 'Split this expense';
-      split.onclick = () => features.openSplit(t); cell.append(split);
+      split.onclick = () => features.openSplit(t); more.append(split);
     }
-    cell.append(deleteButton(t, api, load, $('#message')));
+    more.append(deleteButton(t, api, load, $('#message'))); cell.append(more);
     row.append(cell); fragment.append(row);
   }
   // Replace rows atomically: an empty table would collapse the document and clamp scrolling.
   $('#rows').replaceChildren(fragment);
+}
+function renderDashboardInsights(rows) {
+  const trend = $('#dashboard-trend'), categoriesPanel = $('#dashboard-categories');
+  if (!trend || !categoriesPanel) return;
+  const months = Array.from(new Set(rows.map(t => t.date.slice(0, 7)))).sort().slice(-6);
+  const values = months.map(month => rows.filter(t => !t.review && t.type === 'expense' && t.date.startsWith(month)).reduce((sum, t) => sum + t.amount, 0));
+  const max = Math.max(1, ...values);
+  trend.replaceChildren(...months.map((month, i) => { const item = document.createElement('div'); item.className = 'trend-bar'; item.title = `${month}: ${money(values[i])}`; const bar = document.createElement('span'); bar.style.height = `${Math.max(8, values[i] / max * 100)}%`; item.append(bar, document.createTextNode(month.slice(5))); return item; }));
+  const totals = new Map(); rows.filter(t => !t.review && t.type === 'expense').forEach(t => totals.set(t.category, (totals.get(t.category) || 0) + t.amount));
+  const top = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5), topMax = Math.max(1, ...top.map(([, value]) => value));
+  categoriesPanel.replaceChildren(...(top.length ? top.map(([name, value]) => { const row = document.createElement('div'); row.className = 'category-row'; const label = document.createElement('span'); label.textContent = name; const amount = document.createElement('strong'); amount.textContent = money(value); const bar = document.createElement('i'); bar.style.width = `${value / topMax * 100}%`; row.append(label, amount, bar); return row; }) : [Object.assign(document.createElement('p'), { textContent: 'No confirmed expenses in this range.', className: 'muted' })]));
 }
 function renderHeatmap() {
   const currentMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date());
@@ -232,7 +256,10 @@ const clearDayFilter = document.createElement('button'); clearDayFilter.id = 'cl
 $('#review-summary').append(clearDayFilter);
 const clearDateSelection = () => { selectedHeatmapDate = ''; render(); };
 $('#date-from').oninput = clearDateSelection; $('#date-to').oninput = clearDateSelection; $('#search').oninput = render;
-$('#bank-filter').onchange = render;
+$('#bank-filter').onchange = render; $('#category-filter').onchange = render; $('#status-filter').onchange = render; $('#quick-view').onchange = render;
+document.querySelectorAll('.quick-view-button').forEach(button => button.onclick = () => { $('#quick-view').value = button.dataset.view; $('#status-filter').value = button.dataset.view === 'review' ? 'review' : ''; render(); $('#transaction-scroll').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+const openReviewQueue = () => { $('#quick-view').value = 'review'; $('#status-filter').value = 'review'; render(); $('#transaction-scroll').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+$('#review-card').onclick = openReviewQueue; $('#review-card').onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openReviewQueue(); } };
 $('#heatmap-prev').onclick = () => { heatmapIndex--; applyHeatmapMonthRange(); };
 $('#heatmap-next').onclick = () => { heatmapIndex++; applyHeatmapMonthRange(); };
 $('#all-dates').onclick = () => { selectedHeatmapDate = ''; $('#date-from').value = ''; $('#date-to').value = ''; render(); };

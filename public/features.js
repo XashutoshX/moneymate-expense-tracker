@@ -173,6 +173,8 @@ export function setupFeatures(api, reload, statementImporter) {
     if (profile.photo) $('#profile-photo').src = profile.photo; else $('#profile-photo').removeAttribute('src');
     $('#profile-initial').textContent = (profile.name || 'You').slice(0, 1).toUpperCase();
     renderAlertSenders();
+    const settingsPanel = $('#settings-panel');
+    if (settingsPanel && !settingsPanel.querySelector('.alert-senders-card')) { const alertCard = $('.alert-senders-card'); alertCard.classList.add('settings-card'); settingsPanel.append(alertCard); }
     renderPeople();
     renderCards();
     renderInsights();
@@ -227,6 +229,7 @@ export function setupFeatures(api, reload, statementImporter) {
     $('#profile-form').elements.name.value = profile.name || ''; photo = profile.photo || '';
     $('#photo-file').value = ''; $('#profile-error').textContent = ''; $('#profile-editor').showModal();
   };
+  $('#settings-edit-profile').onclick = () => $('#edit-profile').click();
   $('#remove-photo').onclick = () => { photo = ''; $('#photo-file').value = ''; $('#profile-error').textContent = 'Photo will be removed when you save.'; };
   $('#profile-cancel').onclick = () => $('#profile-editor').close();
   $('#profile-form').onsubmit = async event => {
@@ -309,8 +312,8 @@ export function setupFeatures(api, reload, statementImporter) {
     }
     catch (error) { $('#split-error').textContent = error.message; }
   };
-  for (const view of ['ledger', 'people', 'deep', 'cards', 'sneezy']) $('#' + view + '-tab').onclick = () => {
-    for (const name of ['ledger', 'people', 'deep', 'cards', 'sneezy']) {
+  for (const view of ['ledger', 'people', 'deep', 'cards', 'sneezy', 'settings']) $('#' + view + '-tab').onclick = () => {
+    for (const name of ['ledger', 'people', 'deep', 'cards', 'sneezy', 'settings']) {
       $('#' + name + '-panel').hidden = name !== view;
       $('#' + name + '-tab').setAttribute('aria-pressed', String(name === view));
     }
