@@ -241,6 +241,7 @@ export function setupFeatures(api, reload, statementImporter) {
         photo = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
       }
       await api('/api/profile', 'POST', { name: $('#profile-form').elements.name.value, photo });
+      profile = await api('/api/profile');
       await reload(); $('#profile-editor').close();
     } catch (error) { $('#profile-error').textContent = error.message; }
   };

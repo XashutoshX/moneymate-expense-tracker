@@ -311,4 +311,7 @@ const features = setupFeatures(api, load, statements);
 const calendarPanel = document.querySelector('.dashboard-insights .heatmap-panel');
 const summaryCards = document.querySelector('#ledger-panel > .cards');
 if (calendarPanel && summaryCards) summaryCards.append(calendarPanel);
+const connection = document.querySelector('.connection');
+const appHeader = document.querySelector('.app-header');
+if (connection && appHeader) appHeader.append(connection);
 load().catch(error => { $('#message').textContent = error.message; });
