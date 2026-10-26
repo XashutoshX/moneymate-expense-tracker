@@ -308,4 +308,7 @@ const statements = setupStatements(api, async result => {
   await load();
 }, () => categories);
 const features = setupFeatures(api, load, statements);
+const calendarPanel = document.querySelector('.dashboard-insights .heatmap-panel');
+const summaryCards = document.querySelector('#ledger-panel > .cards');
+if (calendarPanel && summaryCards) summaryCards.append(calendarPanel);
 load().catch(error => { $('#message').textContent = error.message; });
