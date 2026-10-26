@@ -1,8 +1,10 @@
 export function deleteButton(transaction, api, reload, message) {
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'secondary delete-transaction';
-  button.textContent = 'Delete';
+  const icon = document.createElement('span'); icon.className = 'material-symbols-outlined'; icon.textContent = 'delete'; icon.setAttribute('aria-hidden', 'true');
+  button.append(icon);
   button.setAttribute('aria-label', `Delete ${transaction.merchant} on ${transaction.date}`);
+  button.title = `Delete ${transaction.merchant}`;
   button.onclick = async () => {
     const amount = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(transaction.amount / 100);
     if (!window.confirm(`Delete ${transaction.merchant} (${amount}) on ${transaction.date}?${transaction.split ? '\nIts split will also be removed.' : ''}\nThis cannot be undone.`)) return;

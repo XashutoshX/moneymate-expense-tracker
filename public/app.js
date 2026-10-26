@@ -136,14 +136,12 @@ function render() {
     button.className = 'secondary'; button.textContent = t.review ? 'Review' : 'Edit';
     button.dataset.transactionId = t.id;
     button.onclick = () => edit(t); cell.append(button);
-    const more = document.createElement('details'); more.className = 'row-actions';
-    const summary = document.createElement('summary'); summary.textContent = 'More'; more.append(summary);
     if (t.type === 'expense') {
       const split = document.createElement('button'); split.className = 'secondary split-button'; split.textContent = 'Split transaction';
       split.disabled = Boolean(t.review); split.title = t.review ? 'Confirm the expense before splitting' : 'Split this expense';
-      split.onclick = () => features.openSplit(t); more.append(split);
+      split.onclick = () => features.openSplit(t); cell.append(split);
     }
-    more.append(deleteButton(t, api, load, $('#message'))); cell.append(more);
+    cell.append(deleteButton(t, api, load, $('#message')));
     row.append(cell); fragment.append(row);
   }
   // Replace rows atomically: an empty table would collapse the document and clamp scrolling.
